@@ -165,9 +165,11 @@ void readklock (double *tim)
 
 PALETTEENTRY pal[256];
 
-static SDL_Window *window = NULL;
-static SDL_Surface *screen = NULL;
-static SDL_Surface *sdlsurf = NULL;
+static SDL_Window *screen = NULL;
+static SDL_Renderer *renderer = NULL;
+static SDL_Texture *texture = NULL;
+static Uint32 *pixels = NULL;
+static int pitch = 0;
 static int surflocked = 0;
 
 #define MAXVALIDMODES 256
@@ -193,24 +195,12 @@ long getvalidmodelist (validmodetype **davalidmodelist)
 
 void updatepalette (long start, long danum)
 {
-	SDL_Color pe[256];
-	int i,j;
-
-	if (!sdlsurf) return;
-
-	for (i=0,j=danum; j>0; i++,j--) {
-		pe[i].r = pal[start+i].peRed;
-		pe[i].g = pal[start+i].peGreen;
-		pe[i].b = pal[start+i].peBlue;
-		pe[i].a = 0;
-	}
-	SDL_SetPaletteColors(sdlsurf->format->palette, pe, start, danum);
 }
 
 void stopdirectdraw()
 {
 	if (!surflocked) return;
-	SDL_UnlockSurface(sdlsurf);
+	SDL_UnlockTexture(texture);
 	surflocked = 0;
 }
 
@@ -218,24 +208,28 @@ long startdirectdraw(long *vidplc, long *dabpl, long *daxres, long *dayres)
 {
 	if (surflocked) stopdirectdraw();
 
-	if (SDL_LockSurface(sdlsurf) < 0) return 0;
+	if (SDL_LockTexture(texture, 0, (void**)&pixels, &pitch) < 0) return 0;
 	
-	*vidplc = (long)sdlsurf->pixels; *dabpl = sdlsurf->pitch;
-	*daxres = sdlsurf->w; *dayres = sdlsurf->h; surflocked = 1;
+	*vidplc = (long)pixels; *dabpl = pitch;
+	*daxres = xres; *dayres = yres; surflocked = 1;
 	return 1;
 }
 
 void nextpage()
 {
-	if (!sdlsurf) return;
+	if (!screen) return;
 	if (surflocked) stopdirectdraw();
-	SDL_BlitSurface(sdlsurf, NULL, screen, NULL);
-	SDL_UpdateWindowSurface(window);
+
+	SDL_RenderClear(renderer);
+	SDL_RenderCopy(renderer, texture, NULL, NULL);
+	SDL_RenderPresent(renderer);
 }
 
 long clearscreen(long fillcolor)
 {
-	return SDL_FillRect(sdlsurf, NULL, fillcolor) == 0;
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+	SDL_RenderClear(renderer);
+	return 1;
 }
 
 long initdirectdraw(long daxres, long dayres, long dacolbits)
@@ -255,31 +249,29 @@ long initdirectdraw(long daxres, long dayres, long dacolbits)
 	if (fullscreen) winbits |= SDL_WINDOW_FULLSCREEN;
 	if (progresiz) winbits |= SDL_WINDOW_RESIZABLE;
 
-	window = SDL_CreateWindow(
+	screen = SDL_CreateWindow(
 			prognam,
-			SDL_WINDOWPOS_CENTERED,
-			SDL_WINDOWPOS_CENTERED,
+			SDL_WINDOWPOS_UNDEFINED,
+			SDL_WINDOWPOS_UNDEFINED,
 			daxres, dayres,
 			winbits);
-	if (!window) {
-		fputs("video init failed!",stderr);
-		return 0;
-	}
-
-	screen = SDL_GetWindowSurface(window);
 	if (!screen) {
-		fputs("failed to get window surface",stderr);
+		puts("video init failed!");
 		return 0;
 	}
 
-	sdlsurf = SDL_CreateRGBSurface(
-			SDL_SWSURFACE,
-			xres, yres,
-			8,
-			0, 0, 0, 0
-			);
-	if (!sdlsurf) {
-		fputs("failed to create surface",stderr);
+	renderer = SDL_CreateRenderer(screen, -1, 0);
+	if (!renderer) {
+		puts("failed to create renderer");
+		return 0;
+	}
+
+	texture = SDL_CreateTexture(renderer,
+			SDL_PIXELFORMAT_RGB888,
+			SDL_TEXTUREACCESS_STREAMING,
+			daxres, dayres);
+	if (!texture) {
+		puts("failed to create texture");
 		return 0;
 	}
 
@@ -1488,8 +1480,9 @@ void kensoundclose() {}
 void evilquit (const char *str) //Evil because this function makes awful assumptions!!!
 {
 	kensoundclose();
-	SDL_FreeSurface(sdlsurf);
-	SDL_DestroyWindow(window);
+	SDL_DestroyTexture(texture);
+	SDL_DestroyRenderer(renderer);
+	SDL_DestroyWindow(screen);
 	SDL_Quit();
 	if (str) fprintf(stderr,"fatal error! %s\n",str);
 	uninitapp();
@@ -1517,7 +1510,7 @@ void setmouseout (void (*in)(long,long), long x, long y)
 	setmousein = in;
 	setacquire(0, kbd_acquire);
 
-	SDL_WarpMouseInWindow(window, x, y);
+	SDL_WarpMouseInWindow(screen, x, y);
 }
 #endif
 
@@ -1628,8 +1621,9 @@ static void sdlmsgloop(void)
 #endif
 			case SDL_QUIT:
 				kensoundclose();
-				SDL_FreeSurface(sdlsurf);
-				SDL_DestroyWindow(window);
+				SDL_DestroyTexture(texture);
+				SDL_DestroyRenderer(renderer);
+				SDL_DestroyWindow(screen);
 				SDL_Quit();
 				uninitapp();
 				quitprogram = 1;
