@@ -1,10 +1,10 @@
 #if 0
-game.exe: game.obj voxlap5.obj v5.obj kplib.obj winmain.obj game.c; link game voxlap5 v5 kplib winmain ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
+game.exe: game.obj voxlap5.obj v5.obj kplib.obj sdlmain.obj game.c; link game voxlap5 v5 kplib sdlmain lib\x86\SDL2main.lib lib\x86\SDL2.lib ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
 game.obj: game.c voxlap5.h sysmain.h; cl /w /c /J /TP game.c      /Ox /Ob2 /Gs /MD /QIfist
 voxlap5.obj: voxlap5.c voxlap5.h;     cl /w /c /J /TP voxlap5.c   /Ox /Ob2 /Gs /MD
 v5.obj: v5.asm;                       ml /w /c /coff v5.asm
 kplib.obj: kplib.c;                   cl /w /c /J /TP kplib.c     /Ox /Ob2 /Gs /MD
-winmain.obj: winmain.cpp sysmain.h;   cl /w /c /J /TP winmain.cpp /Ox /Ob2 /Gs /MD /DUSEKZ /DZOOM_TEST
+sdlmain.obj: sdlmain.c sysmain.h;     cl /w /c /J /TP sdlmain.c   /Ox /Ob2 /Gs /MD /DUSEKZ /DZOOM_TEST /DNOSOUND
 !if 0
 #endif
 
@@ -1185,7 +1185,7 @@ skipalldraw:;
 
 		//Read keyboard, mouse, and timer
 	readkeyboard();
-	obstatus = bstatus; readmouse(&fmousx,&fmousy,&bstatus);
+	obstatus = bstatus; readmouse(&fmousx,&fmousy,0,&bstatus);
 	odtotclk = dtotclk; readklock(&dtotclk);
 	totclk = (long)(dtotclk*1000.0); fsynctics = (float)(dtotclk-odtotclk);
 

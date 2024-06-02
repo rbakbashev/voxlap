@@ -1,12 +1,12 @@
 #if 0
-voxed.exe: voxed.obj voxlap5.obj v5.obj kplib.obj winmain.obj voxed.c
-	link voxed voxlap5 v5 kplib winmain ddraw.lib dinput.lib dxguid.lib user32.lib gdi32.lib comdlg32.lib /opt:nowin98
-	del winmain.obj
+voxed.exe: voxed.obj voxlap5.obj v5.obj kplib.obj sdlmain.obj voxed.c
+	link voxed voxlap5 v5 kplib sdlmain lib\x86\SDL2.lib ddraw.lib dinput.lib dxguid.lib user32.lib gdi32.lib comdlg32.lib /opt:nowin98
+	del sdlmain.obj
 voxed.obj:   voxed.c voxlap5.h sysmain.h; cl /w /c /J /TP voxed.c     /Ox /Ob2 /Gs /MD
 voxlap5.obj: voxlap5.c voxlap5.h;         cl /w /c /J /TP voxlap5.c   /Ox /Ob2 /Gs /MD
 v5.obj:      v5.asm;                      ml /w /c /coff v5.asm
 kplib.obj:   kplib.c;                     cl /w /c /J /TP kplib.c     /Ox /Ob2 /Gs /MD
-winmain.obj: winmain.cpp;                 cl /w /c /J /TP winmain.cpp /Ox /Ob2 /Gs /MD /DNOSOUND
+sdlmain.obj: sdlmain.c;                   cl /w /c /J /TP sdlmain.c   /Ox /Ob2 /Gs /MD /DNOSOUND
 !if 0
 #endif
 
@@ -2228,7 +2228,7 @@ long notepadinput ()
 			}
 		}
 	}
-	obstatus = bstatus; readmouse(&fmousx,&fmousy,&bstatus);
+	obstatus = bstatus; readmouse(&fmousx,&fmousy,0,&bstatus);
 	fcmousx = min(max(fcmousx+fmousx,3),xres-3); ftol(fcmousx-.5,&cmousx);
 	fcmousy = min(max(fcmousy+fmousy,4),yres-4); ftol(fcmousy-.5,&cmousy);
 	if ((~obstatus)&bstatus&1) //LMB (moves text cursor)
@@ -4352,7 +4352,7 @@ void doframe ()
 
 	//if (keystatus[?]) { } //` (Look at voxel cache graphically)
 
-	obstatus = bstatus; readmouse(&fmousx,&fmousy,&bstatus);
+	obstatus = bstatus; readmouse(&fmousx,&fmousy,0,&bstatus);
 
 #if (USETDHELP != 0)
 	if (helpmode&1)

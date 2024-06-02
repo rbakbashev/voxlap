@@ -1,8 +1,10 @@
 #if 0 //To compile, first compile game.c to generate the OBJ files, then type: "nmake simple.c"
-simple.exe : simple.obj voxlap5.obj v5.obj kplib.obj winmain.obj
-	link simple voxlap5 v5 kplib winmain ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
+simple.exe : simple.obj voxlap5.obj v5.obj kplib.obj sdlmain.obj
+	link simple voxlap5 v5 kplib sdlmain lib\x86\SDL2.lib ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
 simple.obj : simple.c voxlap5.h sysmain.h
 	cl /w /c /J /TP simple.c /Ox /Ob2 /Gs /MD /QIfist
+sdlmain.obj: sdlmain.c
+	cl /w /c /J /TP sdlmain.c   /Ox /Ob2 /Gs /MD /DNOSOUND
 !if 0
 #endif
 
