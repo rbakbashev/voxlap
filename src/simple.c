@@ -2,7 +2,7 @@
 simple.exe : simple.obj voxlap5.obj v5.obj kplib.obj winmain.obj
 	link simple voxlap5 v5 kplib winmain ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
 simple.obj : simple.c voxlap5.h sysmain.h
-	cl /c /J /TP simple.c /Ox /Ob2 /G6Fy /Gs /MD /QIfist
+	cl /w /c /J /TP simple.c /Ox /Ob2 /Gs /MD /QIfist
 !if 0
 #endif
 

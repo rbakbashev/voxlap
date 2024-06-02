@@ -1,11 +1,11 @@
 #if 0 //To compile, type: "nmake kwalk.c"
 kwalk.exe: kwalk.obj voxlap5.obj v5.obj kplib.obj winmain.obj; link kwalk voxlap5 v5 kplib winmain ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib comdlg32.lib /opt:nowin98
 	del winmain.obj
-kwalk.obj:   kwalk.c voxlap5.h sysmain.h; cl /c /J /TP kwalk.c     /Ox /Ob2 /G6Fy /Gs /MD
-voxlap5.obj: voxlap5.c voxlap5.h;         cl /c /J /TP voxlap5.c   /Ox /Ob2 /G6Fy /Gs /MD
-v5.obj:      v5.asm;                      ml /c /coff v5.asm
-kplib.obj:   kplib.c;                     cl /c /J /TP kplib.c     /Ox /Ob2 /G6Fy /Gs /MD
-winmain.obj: winmain.cpp;                 cl /c /J /TP winmain.cpp /Ox /Ob2 /G6Fy /Gs /MD /DNOSOUND
+kwalk.obj:   kwalk.c voxlap5.h sysmain.h; cl /w /c /J /TP kwalk.c     /Ox /Ob2 /Gs /MD
+voxlap5.obj: voxlap5.c voxlap5.h;         cl /w /c /J /TP voxlap5.c   /Ox /Ob2 /Gs /MD
+v5.obj:      v5.asm;                      ml /w /c /coff v5.asm
+kplib.obj:   kplib.c;                     cl /w /c /J /TP kplib.c     /Ox /Ob2 /Gs /MD
+winmain.obj: winmain.cpp;                 cl /w /c /J /TP winmain.cpp /Ox /Ob2 /Gs /MD /DNOSOUND
 !if 0
 #endif
 
