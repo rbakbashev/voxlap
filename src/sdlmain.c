@@ -1,15 +1,13 @@
-#ifndef __GNUC__
-#error GCC only.
+#if defined(_MSC_VER)
+  #define SDL_MAIN_HANDLED
+  #include "SDL2\SDL.h"
+#else
+  #include <SDL2/SDL.h>
 #endif
-
-#ifndef __i386__
-#error i386 targets only.
-#endif
-
-#include "SDL/SDL.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifndef NOSOUND
 #ifdef USEKZ
@@ -41,7 +39,7 @@ typedef struct __attribute__ ((packed)) tWAVEFORMATEX {
 #endif
 
 #undef _WIN32
-#include "Sysmain.h"
+#include "sysmain.h"
 
 #define evalmacro(x) evalmacrox(x)
 #define evalmacrox(x) #x
@@ -61,7 +59,50 @@ long xres = 640, yres = 480, colbits = 8, fullscreen = 1, maxpages = 8;
 
 //======================== CPU detection code begins ========================
 
-static long cputype asm("cputype") = 0;
+long cputype = 0;
+
+#if defined(_MSC_VER)
+
+static _inline long testflag (long c)
+{
+	_asm
+	{
+		mov ecx, c
+		pushfd
+		pop eax
+		mov edx, eax
+		xor eax, ecx
+		push eax
+		popfd
+		pushfd
+		pop eax
+		xor eax, edx
+		mov eax, 1
+		jne menostinx
+		xor eax, eax
+		menostinx:
+	}
+}
+
+static _inline void cpuid (long a, long *s)
+{
+	_asm
+	{
+		push ebx
+		push esi
+		mov eax, a
+		cpuid
+		mov esi, s
+		mov dword ptr [esi+0], eax
+		mov dword ptr [esi+4], ebx
+		mov dword ptr [esi+8], ecx
+		mov dword ptr [esi+12], edx
+		pop esi
+		pop ebx
+	}
+}
+
+#else
 
 static inline long testflag (long c)
 {
@@ -81,6 +122,8 @@ static inline void cpuid (long a, long *s)
 		"movl %%ecx, 8(%%esi)\n\tmovl %%edx, 12(%%esi)"
 		: "+a" (a) : "S" (s) : "ebx","ecx","edx","memory","cc");
 }
+
+#endif
 
 	//Bit numbers of return value:
 	//0:FPU, 4:RDTSC, 15:CMOV, 22:MMX+, 23:MMX, 25:SSE, 26:SSE2, 30:3DNow!+, 31:3DNow!
@@ -106,38 +149,13 @@ static long getcputype ()
 
 //================== Fast & accurate TIMER FUNCTIONS begins ==================
 
-static Uint64 rdtsc64(void)
-{
-	Uint64 q;
-	__asm__ __volatile__ ("rdtsc" : "=A" (q) : : "cc");
-	return q;
-}
-
-static Uint32 pertimbase;
-static Uint64 rdtimbase, nextimstep;
-static double perfrq, klockmul, klockadd;
-
 void initklock ()
 {
-	perfrq = 1000.0;
-	rdtimbase = rdtsc64();
-	pertimbase = SDL_GetTicks();
-	nextimstep = 4194304; klockmul = 0.000000001; klockadd = 0.0;
 }
 
 void readklock (double *tim)
 {
-	Uint64 q = rdtsc64()-rdtimbase;
-	if (q > nextimstep)
-	{
-		Uint32 p;
-		double d;
-		p = SDL_GetTicks();
-		d = klockmul; klockmul = ((double)(p-pertimbase))/(((double)q)*perfrq);
-		klockadd += (d-klockmul)*((double)q);
-		do { nextimstep <<= 1; } while (q > nextimstep);
-	}
-	(*tim) = ((double)q)*klockmul + klockadd;
+	*tim = (double)(SDL_GetTicks64() / 1000.);
 }
 
 //=================== Fast & accurate TIMER FUNCTIONS ends ===================
@@ -145,15 +163,14 @@ void readklock (double *tim)
 //SDL Video VARIABLES & CODE--------------------------------------------------
 #ifndef NODRAW
 
-#define BASICSURFBITS (SDL_HWSURFACE|SDL_DOUBLEBUF)
-
 PALETTEENTRY pal[256];
 
+static SDL_Window *window = NULL;
+static SDL_Surface *screen = NULL;
 static SDL_Surface *sdlsurf = NULL;
 static int surflocked = 0;
 
 #define MAXVALIDMODES 256
-//typedef struct { long x, y; char c, r0, g0, b0, a0, rn, gn, bn, an; } validmodetype;
 static validmodetype validmodelist[MAXVALIDMODES];
 static long validmodecnt = 0;
 validmodetype curvidmodeinfo;
@@ -171,33 +188,6 @@ static void gvmladd(long x, long y, char c)
 
 long getvalidmodelist (validmodetype **davalidmodelist)
 {
-	int cd[5] = { 8,15,16,24,32 }, i, j;
-	SDL_Rect **modes;
-	SDL_PixelFormat pf = { NULL, 8, 1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0 };
-	
-	if (!validmodecnt) {
-		for (i=0;i<5;i++) {
-			pf.BitsPerPixel = cd[i];
-			pf.BytesPerPixel = cd[i] >> 3;
-			modes = SDL_ListModes(&pf, BASICSURFBITS|SDL_FULLSCREEN);
-			if (modes == (SDL_Rect**)0) {
-				// none available
-			} if (modes == (SDL_Rect**)-1) {
-				// add some defaults
-				gvmladd(640, 480, cd[i]);
-				gvmladd(800, 600, cd[i]);
-				gvmladd(1024, 768, cd[i]);
-				gvmladd(1152, 864, cd[i]);
-				gvmladd(1280, 960, cd[i]);
-				gvmladd(1280, 1024, cd[i]);
-				gvmladd(1600, 1200, cd[i]);
-			} else {
-				for (j=0;modes[j];j++)
-					gvmladd(modes[j]->w, modes[j]->h, cd[i]);
-			}
-		}
-	}
-	(*davalidmodelist) = validmodelist;
 	return(validmodecnt);
 }
 
@@ -205,22 +195,22 @@ void updatepalette (long start, long danum)
 {
 	SDL_Color pe[256];
 	int i,j;
-	
+
 	if (!sdlsurf) return;
 
 	for (i=0,j=danum; j>0; i++,j--) {
 		pe[i].r = pal[start+i].peRed;
 		pe[i].g = pal[start+i].peGreen;
 		pe[i].b = pal[start+i].peBlue;
-		pe[i].unused = 0;
+		pe[i].a = 0;
 	}
-	SDL_SetColors(sdlsurf, pe, start, danum);
+	SDL_SetPaletteColors(sdlsurf->format->palette, pe, start, danum);
 }
 
 void stopdirectdraw()
 {
 	if (!surflocked) return;
-	if (sdlsurf && SDL_MUSTLOCK(sdlsurf)) SDL_UnlockSurface(sdlsurf);
+	SDL_UnlockSurface(sdlsurf);
 	surflocked = 0;
 }
 
@@ -239,7 +229,8 @@ void nextpage()
 {
 	if (!sdlsurf) return;
 	if (surflocked) stopdirectdraw();
-	SDL_Flip(sdlsurf);
+	SDL_BlitSurface(sdlsurf, NULL, screen, NULL);
+	SDL_UpdateWindowSurface(window);
 }
 
 long clearscreen(long fillcolor)
@@ -249,54 +240,56 @@ long clearscreen(long fillcolor)
 
 long initdirectdraw(long daxres, long dayres, long dacolbits)
 {
-	Uint32 surfbits;
+	Uint32 winbits;
 
 #ifndef NOINPUT
 	extern long mouse_acquire;
 	if (mouse_acquire) {
-		SDL_WM_GrabInput(SDL_GRAB_OFF);
-		SDL_ShowCursor(SDL_ENABLE);
+		SDL_SetRelativeMouseMode(SDL_FALSE);
 	}
 #endif
 	
 	xres = daxres; yres = dayres; colbits = dacolbits;
 
-	surfbits = BASICSURFBITS;
-	surfbits |= SDL_HWPALETTE;
-	if (fullscreen) surfbits |= SDL_FULLSCREEN;
-	else if (progresiz) surfbits |= SDL_RESIZABLE;
+	winbits = 0;
+	if (fullscreen) winbits |= SDL_WINDOW_FULLSCREEN;
+	if (progresiz) winbits |= SDL_WINDOW_RESIZABLE;
 
-	sdlsurf = SDL_SetVideoMode(daxres, dayres, dacolbits, surfbits);
-	if (!sdlsurf) {
+	window = SDL_CreateWindow(
+			prognam,
+			SDL_WINDOWPOS_CENTERED,
+			SDL_WINDOWPOS_CENTERED,
+			daxres, dayres,
+			winbits);
+	if (!window) {
 		fputs("video init failed!",stderr);
 		return 0;
 	}
 
-	// FIXME: should I?
-	xres = sdlsurf->w;
-	yres = sdlsurf->h;
-	colbits = sdlsurf->format->BitsPerPixel;
-	fullscreen = (sdlsurf->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN;
+	screen = SDL_GetWindowSurface(window);
+	if (!screen) {
+		fputs("failed to get window surface",stderr);
+		return 0;
+	}
+
+	sdlsurf = SDL_CreateRGBSurface(
+			SDL_SWSURFACE,
+			xres, yres,
+			8,
+			0, 0, 0, 0
+			);
+	if (!sdlsurf) {
+		fputs("failed to create surface",stderr);
+		return 0;
+	}
 
 	memset(&curvidmodeinfo, 0, sizeof(validmodetype));
-	curvidmodeinfo.x = sdlsurf->w;
-	curvidmodeinfo.y = sdlsurf->h;
-	curvidmodeinfo.c = sdlsurf->format->BitsPerPixel;
-	curvidmodeinfo.r0 = sdlsurf->format->Rshift;
-	curvidmodeinfo.rn = 8 - sdlsurf->format->Rloss;
-	curvidmodeinfo.g0 = sdlsurf->format->Gshift;
-	curvidmodeinfo.gn = 8 - sdlsurf->format->Gloss;
-	curvidmodeinfo.b0 = sdlsurf->format->Bshift;
-	curvidmodeinfo.bn = 8 - sdlsurf->format->Bloss;
-	curvidmodeinfo.a0 = sdlsurf->format->Ashift;
-	curvidmodeinfo.an = 8 - sdlsurf->format->Aloss;
-	
+
 	if (colbits == 8) updatepalette(0,256);
 
 #ifndef NOINPUT
 	if (mouse_acquire) {
-		SDL_WM_GrabInput(SDL_GRAB_ON);
-		SDL_ShowCursor(SDL_DISABLE);
+		SDL_SetRelativeMouseMode(SDL_TRUE);
 	}
 #endif
 
@@ -313,7 +306,6 @@ long changeres(long daxres, long dayres, long dacolbits, long dafullscreen)
 
 //SDL Input VARIABLES & CODE--------------------------------------------------
 char keystatus[256];
-static long shkeystatus = 0;
 #define KEYBUFSIZ 256
 static long keybuf[KEYBUFSIZ], keybufr = 0, keybufw = 0, keybufw2 = 0;
 
@@ -327,17 +319,20 @@ static long mousex = 0, mousey = 0, gbstatus = 0;
 long mousmoth=0;
 float mousper=0.0;
 
-void readkeyboard ()
+long readkeyboard ()
 {
 	// all gets done in sdlmsgloop now
+	return 0;
 }
 
-void readmouse (float *fmousx, float *fmousy, long *bstatus)
+void readmouse (float *fmousx, float *fmousy, float *fmousz, long *bstatus)
 {
 	if (!mouse_acquire) { *fmousx = *fmousy = 0; *bstatus = 0; return; }
 	
 	*fmousx = (float)mousex;
 	*fmousy = (float)mousey;
+	if (fmousz)
+		*fmousz = 0.f;
 	*bstatus = gbstatus;
 
 	mousex = mousey = 0;
@@ -1482,9 +1477,19 @@ void quitloop ()
 	SDL_PushEvent(&ev);
 }
 
+#ifdef NOSOUND
+void setvolume (long) {}
+void playsound (const char *, long, float, void *, long) {}
+void setears3d (float, float, float, float, float, float, float, float, float) {}
+void playsoundupdate (void *, void *) {}
+void kensoundclose() {}
+#endif
+
 void evilquit (const char *str) //Evil because this function makes awful assumptions!!!
 {
 	kensoundclose();
+	SDL_FreeSurface(sdlsurf);
+	SDL_DestroyWindow(window);
 	SDL_Quit();
 	if (str) fprintf(stderr,"fatal error! %s\n",str);
 	uninitapp();
@@ -1496,14 +1501,13 @@ void evilquit (const char *str) //Evil because this function makes awful assumpt
 #ifndef NOINPUT
 void setacquire (long mouse, long kbd)
 {
-	SDL_GrabMode g;
-	
 	// SDL doesn't let the mouse and keyboard be grabbed independantly
-	if ((mouse || kbd) != mouse_acquire) {
-		g = SDL_WM_GrabInput( (mouse || kbd) ? SDL_GRAB_ON : SDL_GRAB_OFF );
-		mouse_acquire = kbd_acquire = (g == SDL_GRAB_ON);
-
-		SDL_ShowCursor(mouse_acquire ? SDL_DISABLE : SDL_ENABLE);
+	if (mouse || kbd) {
+		SDL_SetRelativeMouseMode(SDL_TRUE);
+		mouse_acquire = 1;
+	} else {
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+		mouse_acquire = 0;
 	}
 }
 
@@ -1513,11 +1517,11 @@ void setmouseout (void (*in)(long,long), long x, long y)
 	setmousein = in;
 	setacquire(0, kbd_acquire);
 
-	SDL_WarpMouse(x,y);
+	SDL_WarpMouseInWindow(window, x, y);
 }
 #endif
 
-static unsigned char keytranslation[SDLK_LAST] = {
+static unsigned char keytranslation[] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 14, 15, 0, 0, 0, 28, 0, 0, 0, 0, 0, 89, 0, 0, 0, 
 	0, 0, 0, 0, 1, 0, 0, 0, 0, 57, 2, 40, 4, 5, 6, 8, 40, 10, 11, 9, 13, 51,
 	12, 52, 53, 11, 2, 3, 4, 5, 6, 7, 8, 9, 10, 39, 39, 51, 13, 52, 53, 3, 0,
@@ -1540,36 +1544,18 @@ static void sdlmsgloop(void)
 {
 	SDL_Event ev;
 	unsigned char sc;
+	long shkeystatus;
 
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {
-			case SDL_ACTIVEEVENT:
-				if (ev.active.state & SDL_APPINPUTFOCUS) {
-					shkeystatus = 0;
-					gbstatus = 0;
-					ActiveApp = ev.active.gain;
-					if (mouse_acquire) {
-						if (ActiveApp) {
-							SDL_WM_GrabInput(SDL_GRAB_ON);
-							SDL_ShowCursor(SDL_DISABLE);
-						} else {
-							SDL_WM_GrabInput(SDL_GRAB_OFF);
-							SDL_ShowCursor(SDL_ENABLE);
-						}
-					}
-				}
-				break;
-#ifndef NODRAW
-			case SDL_VIDEORESIZE:
-				ActiveApp = 1;
-				initdirectdraw(ev.resize.w, ev.resize.h, colbits);
-				break;
-#endif
 			case SDL_KEYDOWN:
-				sc = keytranslation[ev.key.keysym.sym];
-				keystatus[ sc ] = 1;   // FIXME: verify this is kosher
-				ext_keystatus[ sc ] = 1|2;
+				if (ev.key.keysym.sym < 256) {
+					sc = keytranslation[ev.key.keysym.sym];
+					keystatus[ sc ] = 1;   // FIXME: verify this is kosher
+					ext_keystatus[ sc ] = 1|2;
+				}
 				switch (ev.key.keysym.sym) {
+					case SDLK_ESCAPE: quitprogram = 1; break;
 					case SDLK_LSHIFT: shkeystatus |= (1<<16); break;
 					case SDLK_RSHIFT: shkeystatus |= (1<<17); break;
 					case SDLK_LCTRL:  shkeystatus |= (1<<18); break;
@@ -1584,16 +1570,13 @@ static void sdlmsgloop(void)
 						}
 						break;
 				}
-				// The WM_CHAR should be in here somewhere
-				if (ev.key.keysym.unicode != 0 && (ev.key.keysym.unicode & 0xff80) == 0) {
-					if (keybufw2 != keybufr) //stick ASCII code in last FIFO value
-						keybuf[(keybufw2-1)&(KEYBUFSIZ-1)] |= (ev.key.keysym.unicode & 0x7f);
-				}
 				break;
 			case SDL_KEYUP:
-				sc = keytranslation[ev.key.keysym.sym];
-				keystatus[ sc ] = 0;   // FIXME: verify this is kosher
-				ext_keystatus[ sc ] &= ~1; // preserve bit 2 only
+				if (ev.key.keysym.sym < 256) {
+					sc = keytranslation[ev.key.keysym.sym];
+					keystatus[ sc ] = 0;   // FIXME: verify this is kosher
+					ext_keystatus[ sc ] &= ~1; // preserve bit 2 only
+				}
 				switch (ev.key.keysym.sym) {
 					case SDLK_LSHIFT: shkeystatus &= ~(1<<16); break;
 					case SDLK_RSHIFT: shkeystatus &= ~(1<<17); break;
@@ -1645,6 +1628,8 @@ static void sdlmsgloop(void)
 #endif
 			case SDL_QUIT:
 				kensoundclose();
+				SDL_FreeSurface(sdlsurf);
+				SDL_DestroyWindow(window);
 				SDL_Quit();
 				uninitapp();
 				quitprogram = 1;
@@ -1674,12 +1659,14 @@ void breath ()
 
 	//Call like this: arg2filename(argv[1],".ksm",curfilename);
 	//Make sure curfilename length is lon(wParam&255)g enough!
+#if !defined(_MSC_VER)
 static void strlwr(char *s)
 {
 		for ( ; *s; s++)
 				if ((*s) >= 'A' || (*s) <= 'Z')
 						*s &= ~0x20;
 }
+#endif
 void arg2filename (const char *oarg, const char *ext, char *narg)
 {
 	long i;
@@ -1700,16 +1687,31 @@ void arg2filename (const char *oarg, const char *ext, char *narg)
 	//01 = reserved  (1)   01 = -inf         (4)
 	//10 = 53-bit    (2)   10 = inf          (8)
 	//11 = 64-bit    (3)   11 = 0            (c)
-static long fpuasm[2] asm("fpuasm");
+long fpuasm[2];
+
+#if defined(_MSC_VER)
+static _inline void fpuinit (long a)
+{
+	_asm
+	{
+		mov eax, a
+		fninit
+		fstcw fpuasm
+		and byte ptr fpuasm[1], 0f0h
+		or byte ptr fpuasm[1], al
+		fldcw fpuasm
+	}
+}
+#else
 void fpuinit (long a)
 {
 	__asm__ __volatile__ (
 		"fninit; fstcw fpuasm; andb $240, fpuasm(,1); orb %%al, fpuasm(,1); fldcw fpuasm;"
 		: : "a" (a) : "memory","cc");
 }
+#endif
 
-
-int main(int argc, char **argv)
+int main(int argc, char *argv[])
 {
 	Uint32 sdlinitflags;
 	int i;
@@ -1752,6 +1754,8 @@ int main(int argc, char **argv)
 	breath();
 	while (!quitprogram)
 	{
+		SDL_Delay(10);
+
 		if (alwaysactive || ActiveApp) { fpuinit(0x2); doframe(); }
 		else SDL_WaitEvent(NULL);
 		breath();
