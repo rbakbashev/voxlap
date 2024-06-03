@@ -182,7 +182,6 @@ extern void drawpoint3d (float, float, float, long);
 extern void drawline2d (float, float, float, float, long);
 extern void drawline3d (float, float, float, float, float, float, long);
 extern long project2d (float, float, float, float *, float *, float *);
-extern void drawspherefill (float, float, float, float, long);
 extern void drawpicinquad (long, long, long, long, long, long, long, long, float, float, float, float, float, float, float, float);
 extern void drawpolyquad (long, long, long, long, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float);
 extern void print4x6 (long, long, long, long, const char *, ...);
@@ -8336,99 +8335,6 @@ void drawline3d (float x0, float y0, float z0, float x1, float y1, float z1, lon
 #endif
 }
 
-	//If radius is negative, then it uses Z-buffering
-void drawspherefill (float ox, float oy, float oz, float bakrad, long col)
-{
-	float a, b, c, d, e, f, g, h, t, cxcx, cycy, Za, Zb, Zc, ysq;
-	float r2a, rr2a, nb, nbi, isq, isqi, isqii, cx, cy, cz, rad;
-	long sx1, sy1, sx2, sy2, p, sx;
-
-	rad = fabs(bakrad);
-#if (USEZBUFFER == 0)
-	bakrad = rad;
-#endif
-
-	ox -= gipos.x; oy -= gipos.y; oz -= gipos.z;
-	cz = ox*gifor.x + oy*gifor.y + oz*gifor.z; if (cz < SCISDIST) return;
-	cx = ox*gistr.x + oy*gistr.y + oz*gistr.z;
-	cy = ox*gihei.x + oy*gihei.y + oz*gihei.z;
-
-		//3D Sphere projection (see spherast.txt for derivation) (13 multiplies)
-	cxcx = cx*cx; cycy = cy*cy; g = rad*rad - cxcx - cycy - cz*cz;
-	a = g + cxcx; if (!a) return;
-	b = cx*cy; b += b;
-	c = g + cycy;
-	f = gihx*cx + gihy*cy - gihz*cz;
-	d = -cx*f - gihx*g; d += d;
-	e = -cy*f - gihy*g; e += e;
-	f = f*f + g*(gihx*gihx+gihy*gihy+gihz*gihz);
-
-		//isq = (b*b-4*a*c)yý + (2*b*d-4*a*e)y + (d*d-4*a*f) = 0
-	Za = b*b - a*c*4; if (!Za) return;
-	Zb = b*d*2 - a*e*4;
-	Zc = d*d - a*f*4;
-	ysq = Zb*Zb - Za*Zc*4; if (ysq <= 0) return;
-	t = sqrt(ysq); //fsqrtasm(&ysq,&t);
-	h = .5f / Za;
-	ftol((-Zb+t)*h,&sy1); if (sy1 < 0) sy1 = 0;
-	ftol((-Zb-t)*h,&sy2); if (sy2 > yres) sy2 = yres;
-	if (sy1 >= sy2) return;
-	r2a = .5f / a; rr2a = r2a*r2a;
-	nbi = -b*r2a; nb = nbi*(float)sy1-d*r2a;
-	h = Za*(float)sy1; isq = ((float)sy1*(h+Zb)+Zc)*rr2a;
-	isqi = (h+h+Za+Zb)*rr2a; isqii = Za*rr2a*2;
-
-	p = ylookup[sy1]+frameplace;
-	sy2 = ylookup[sy2]+frameplace;
-#if (USEZBUFFER == 1)
-	if ((*(long *)&bakrad) >= 0)
-	{
-#endif
-		while (1)  //(a)xý + (b*y+d)x + (c*y*y+e*y+f) = 0
-		{
-			t = sqrt(isq); //fsqrtasm(&isq,&t);
-			ftol(nb-t,&sx1); if (sx1 < 0) sx1 = 0;
-			ftol(nb+t,&sx2);
-			sx2 = min(sx2,xres)-sx1;
-			if (sx2 > 0) clearbuf((void *)((sx1<<2)+p),sx2,col);
-			p += bytesperline; if (p >= sy2) return;
-			isq += isqi; isqi += isqii; nb += nbi;
-		}
-#if (USEZBUFFER == 1)
-	}
-	else
-	{     //Use Z-buffering
-
-		if (ofogdist >= 0) //If fog enabled...
-		{
-			ftol(sqrt(ox*ox + oy*oy),&sx); //Use cylindrical x-y distance for fog
-			if (sx > 2047) sx = 2047;
-			sx = (long)(*(short *)&foglut[sx]);
-			col = ((((( vx5.fogcol     &255)-( col     &255))*sx)>>15)    ) +
-					((((((vx5.fogcol>> 8)&255)-((col>> 8)&255))*sx)>>15)<< 8) +
-					((((((vx5.fogcol>>16)&255)-((col>>16)&255))*sx)>>15)<<16) + col;
-		}
-
-		while (1)  //(a)xý + (b*y+d)x + (c*y*y+e*y+f) = 0
-		{
-			t = sqrt(isq); //fsqrtasm(&isq,&t);
-			ftol(nb-t,&sx1); if (sx1 < 0) sx1 = 0;
-			ftol(nb+t,&sx2);
-			if (sx2 > xres) sx2 = xres;
-			for(sx=sx1;sx<sx2;sx++)
-				if (*(long *)&cz < *(long *)(p+(sx<<2)+zbufoff))
-				{
-					*(long *)(p+(sx<<2)+zbufoff) = *(long *)&cz;
-					*(long *)(p+(sx<<2)) = col;
-				}
-			sy1++;
-			p += bytesperline; if (p >= sy2) return;
-			isq += isqi; isqi += isqii; nb += nbi;
-		}
-	}
-#endif
-}
-
 void drawpicinquad (long rpic, long rbpl, long rxsiz, long rysiz,
 						  long wpic, long wbpl, long wxsiz, long wysiz,
 						  float x0, float y0, float x1, float y1,
@@ -9852,37 +9758,6 @@ static void kv6draw (vx5sprite *spr)
 			 fabs(nfor.x*ginor[z].x + nfor.y*ginor[z].y + nfor.z*ginor[z].z) +
 					npos.x*ginor[z].x + npos.y*ginor[z].y + npos.z*ginor[z].z < 0) return;
 	}
-#if 0   //There are bugs when some vertices are behind ifor plane
-	x = xres; y = xres; inx = 0; iny = 0;
-	for(z=7;z>=0;z--) //This is useful for debugging.
-	{
-		tp.x = -kv->xpiv; if (z&1) tp.x += (float)kv->xsiz;
-		tp.y = -kv->ypiv; if (z&2) tp.y += (float)kv->ysiz;
-		tp.z = -kv->zpiv; if (z&4) tp.z += (float)kv->zsiz;
-		drawspherefill(tp.x*ts.x+tp.y*th.x+tp.z*tf.x+spr->p.x,
-							tp.x*ts.y+tp.y*th.y+tp.z*tf.y+spr->p.y,
-							tp.x*ts.z+tp.y*th.z+tp.z*tf.z+spr->p.z,.5,0xf08040);
-		tp2.x = tp.x*ts.x+tp.y*th.x+tp.z*tf.x+spr->p.x-gipos.x;
-		tp2.y = tp.x*ts.y+tp.y*th.y+tp.z*tf.y+spr->p.y-gipos.y;
-		tp2.z = tp.x*ts.z+tp.y*th.z+tp.z*tf.z+spr->p.z-gipos.z;
-		tp.z = tp2.x*gifor.x + tp2.y*gifor.y + tp2.z*gifor.z; if (tp.z < 2) continue;
-		tp.x = tp2.x*gistr.x + tp2.y*gistr.y + tp2.z*gistr.z;
-		tp.y = tp2.x*gihei.x + tp2.y*gihei.y + tp2.z*gihei.z;
-		ftol(tp.x*gihz/tp.z + gihx,&inz);
-		if (inz < x) x = inz;
-		if (inz > inx) inx = inz;
-		ftol(tp.y*gihz/tp.z+gihy,&inz);
-		if (inz < y) y = inz;
-		if (inz > iny) iny = inz;
-	}
-	if (x < 0) x = 0;
-	if (inx > xres) inx = xres;
-	if (y < 0) y = 0;
-	if (iny > yres) iny = yres;
-	if (x < inx)
-		for(inz=y;inz<iny;inz++)
-			clearbuf((void *)(ylookup[inz]+(x<<2)+frameplace),inx-x,0L);
-#endif
 
 #if (USEZBUFFER == 0)
 	lpoint3d lp;
@@ -12597,12 +12472,6 @@ long sxleng = 0;
 #define CLIPRAD 5
 dpoint3d ipos, istr, ihei, ifor, ivel;
 
-	//Debris variables:
-#define MAXDBRI 2048
-typedef struct { point3d p, v; long tim, col; } dbritype;
-dbritype dbri[MAXDBRI];
-long dbrihead = 0, dbritail = 0;
-
 	//Tile variables: (info telling where status bars & menus are stored)
 typedef struct { long f, p, x, y; } tiletype;
 #define FONTXDIM 9
@@ -13238,150 +13107,6 @@ void uninitapp ()
 	uninitvoxlap();
 }
 
-	//liquid==0 means it bounces
-	//liquid!=0 means no bounce and freezes into floor (useful for blood)
-void spawndebris (point3d *p, float vel, long col, long num, long liquid)
-{
-	point3d fp;
-
-	for(;num>=0;num--)
-	{
-		dbri[dbrihead].p.x = p->x;
-		dbri[dbrihead].p.y = p->y;
-		dbri[dbrihead].p.z = p->z;
-		do  //Uniform distribution on solid sphere
-		{
-			fp.x = (((float)rand())-16383.5)/16383.5;
-			fp.y = (((float)rand())-16383.5)/16383.5;
-			fp.z = (((float)rand())-16383.5)/16383.5;
-		} while (fp.x*fp.x + fp.y*fp.y + fp.z*fp.z > 1.0);
-		dbri[dbrihead].v.x = fp.x*vel;
-		dbri[dbrihead].v.y = fp.y*vel;
-		dbri[dbrihead].v.z = fp.z*vel;
-		dbri[dbrihead].tim = totclk;
-		dbri[dbrihead].col = (col&0xffffff);
-		if (liquid) dbri[dbrihead].col |= 0x80000000;
-		dbrihead = ((dbrihead+1)&(MAXDBRI-1));
-		if (dbrihead == dbritail) dbritail = ((dbritail+1)&(MAXDBRI-1));
-	}
-}
-
-void movedebris ()
-{
-	long i, j;
-	float f;
-	point3d ofp, fp;
-	lpoint3d lp;
-
-	for(i=dbritail;i!=dbrihead;i=((i+1)&(MAXDBRI-1)))
-	{
-		if (totclk-dbri[i].tim >= 2000)
-		{
-			if (i != dbritail) dbri[i] = dbri[dbritail];
-			dbritail = ((dbritail+1)&(MAXDBRI-1)); continue;
-		}
-		ofp = dbri[i].p;
-		dbri[i].v.z += fsynctics*2.0;
-		dbri[i].p.x += dbri[i].v.x * fsynctics*64;
-		dbri[i].p.y += dbri[i].v.y * fsynctics*64;
-		dbri[i].p.z += dbri[i].v.z * fsynctics*64;
-		if (dbri[i].col >= 0) //bounce and disappear
-		{
-			if (isvoxelsolid((long)dbri[i].p.x,(long)dbri[i].p.y,(long)dbri[i].p.z))
-			{
-				//if (!(rand()&3))
-				//{
-					dbri[i] = dbri[dbritail];
-					dbritail = ((dbritail+1)&(MAXDBRI-1));
-				//}
-				//else //TOO SLOW TO BE USEFUL :/
-				//{
-				//   estnorm((long)dbri[i].p.x,(long)dbri[i].p.y,(long)dbri[i].p.z,&fp);
-				//   f = (dbri[i].v.x*fp.x + dbri[i].v.y*fp.y + dbri[i].v.z*fp.z)*2.f;
-				//   dbri[i].v.x = (dbri[i].v.x - fp.x*f)*.5f;
-				//   dbri[i].v.y = (dbri[i].v.y - fp.y*f)*.5f;
-				//   dbri[i].v.z = (dbri[i].v.z - fp.z*f)*.5f;
-				//}
-			}
-		}
-		else //no bounce; freeze color into .VXL map
-		{
-			if (!cansee(&ofp,&dbri[i].p,&lp))
-			{
-				j = getcube(lp.x,lp.y,lp.z);
-				if ((unsigned long)j >= 2)
-				{
-					long r, g, b, r2, g2, b2;
-					r = (long)((char *)j)[2];
-					g = (long)((char *)j)[1];
-					b = (long)((char *)j)[0];
-					r2 = ((char *)&dbri[i].col)[2];
-					g2 = ((char *)&dbri[i].col)[1];
-					b2 = ((char *)&dbri[i].col)[0];
-					*(long *)j = ((*(long *)j)&0xff000000) +
-									 ((((r2-r)>>2) + r)<<16) +
-									 ((((g2-g)>>2) + g)<<8) +
-									 ((((b2-b)>>2) + b));
-					//*(long *)j = dbri[i].col;
-				}
-
-				dbri[i] = dbri[dbritail];
-				dbritail = ((dbritail+1)&(MAXDBRI-1));
-			}
-		}
-	}
-}
-
-void explodesprite (vx5sprite *spr, float vel, long liquid, long stepsize)
-{
-	point3d fp, fp2, fp3, fp4;
-	kv6voxtype *v, *ve;
-	kv6data *kv;
-	long i, x, y, z;
-
-		//WARNING: This code will change if I re-design the KV6 format!
-	kv = spr->voxnum; if (!kv) return;
-	v = kv->vox;
-	i = -(rand()%stepsize); //i = stepstart;
-	stepsize--;
-	for(x=0;x<kv->xsiz;x++)
-	{
-		fp.x = x - kv->xpiv;
-		fp2.x = spr->s.x*fp.x + spr->p.x;
-		fp2.y = spr->s.y*fp.x + spr->p.y;
-		fp2.z = spr->s.z*fp.x + spr->p.z;
-		for(y=0;y<kv->ysiz;y++)
-		{
-			fp.y = y - kv->ypiv;
-			fp3.x = spr->h.x*fp.y + fp2.x;
-			fp3.y = spr->h.y*fp.y + fp2.y;
-			fp3.z = spr->h.z*fp.y + fp2.z;
-			for(ve=&v[kv->ylen[x*kv->ysiz+y]];v<ve;v++)
-			{
-#if 1          //Surface voxels only
-				i--; if (i >= 0) continue; i = stepsize;
-				fp.z = v->z - kv->zpiv;
-				fp4.x = spr->f.x*fp.z + fp3.x;
-				fp4.y = spr->f.y*fp.z + fp3.y;
-				fp4.z = spr->f.z*fp.z + fp3.z;
-				spawndebris(&fp4,vel,v->col,1,liquid);
-#else          //All voxels in volume. WARNING: use only for very small KV6!
-				if (v->vis&16) z = v->z;
-				for(;z<=v->z;z++)
-				{
-					i++; if (i < 0) continue; i = stepsize;
-					fp.z = z - kv->zpiv;
-					fp4.x = spr->f.x*fp.z + fp3.x;
-					fp4.y = spr->f.y*fp.z + fp3.y;
-					fp4.z = spr->f.z*fp.z + fp3.z;
-					spawndebris(&fp4,vel,v->col,1,liquid);
-				}
-#endif
-			}
-		}
-	}
-}
-
 void deletesprite (long index)
 {
 	numsprites--;
@@ -13412,9 +13137,6 @@ void doframe ()
 
 	for(i=numsprites-1;i>=0;i--)
 		drawsprite(&spr[i]);
-
-	for(i=dbritail;i!=dbrihead;i=((i+1)&(MAXDBRI-1)))
-		drawspherefill(dbri[i].p.x,dbri[i].p.y,dbri[i].p.z,(float)(totclk-dbri[i].tim)*.0004-1,dbri[i].col);
 
 	if (woodspr.owner >= 0)
 		drawsprite(&woodspr);
@@ -13901,7 +13623,6 @@ skipalldraw:;
 
 						lastbulpos.x = lp2.x; lastbulpos.y = lp2.y; lastbulpos.z = lp2.z;
 						lastbulvel.x = ifor.x; lastbulvel.y = ifor.y; lastbulvel.z = ifor.z;
-						spawndebris(&fp,0.5,i,4,0);
 					}
 				}
 				break;
@@ -14023,8 +13744,6 @@ skipalldraw:;
 		}
 	}
 
-	movedebris();
-
 	for(i=numsprites-1;i>=0;i--)
 	{
 		if (spr[i].tag == -17) //Animate melted sprites
@@ -14041,11 +13760,6 @@ skipalldraw:;
 						j = spr[i].voxnum->vox[0].col;
 
 						playsound(DEBRIS2,70,(float)(rand()-32768)*.00002+1.0,&spr[i].p,KSND_3D);
-						explodesprite(&spr[i],.125,0,3);
-
-						//spawndebris(&spr[i].p,1,j,16,0);
-						//spawndebris(&spr[i].p,0.5,j,8,0);
-						//spawndebris(&spr[i].p,0.25,j,4,0);
 
 						//setkv6(&spr[i],0);
 
@@ -14094,11 +13808,6 @@ skipalldraw:;
 						j = spr[i].voxnum->vox[0].col;
 
 						playsound(DEBRIS2,70,(float)(rand()-32768)*.00002+1.0,&spr[i].p,KSND_3D);
-						explodesprite(&spr[i],.125,0,3);
-
-						//spawndebris(&spr[i].p,f*.5  /96,j,16,0);
-						//spawndebris(&spr[i].p,f*.25 /96,j,8,0);
-						//spawndebris(&spr[i].p,f*.125/96,j,4,0);
 
 							//Delete temporary sprite data from memory
 						free(spr[i].voxnum);
@@ -14161,11 +13870,6 @@ skipalldraw:;
 					spr[i].p.x = lp.x; spr[i].p.y = lp.y; spr[i].p.z = lp.z-((float)spr[i].voxnum->zsiz-spr[i].voxnum->zpiv)*.5;
 					continue;
 				}
-
-				fp.x = spr[i].p.x-spr[i].v.x*.1;
-				fp.y = spr[i].p.y-spr[i].v.y*.1;
-				fp.z = spr[i].p.z-spr[i].v.z*.1;
-				spawndebris(&fp,0.5,(rand()&0x3f3f)+0xc03020,1,1);
 
 				if (spr[i].owner == -1) //In death animation, otherwise dead on floor
 				{
@@ -14289,8 +13993,6 @@ skipalldraw:;
 				if (f < 16*16)
 				{
 					k = ((rand()&15)+8);
-					fp.x = ipos.x; fp.y = ipos.y; fp.z = ipos.z;
-					spawndebris(&fp,0.5,(rand()&0x3f3f)+0xc03020,k,1);
 					myhealth -= k;
 					if (myhealth < 0)
 					{
@@ -14333,10 +14035,6 @@ skipalldraw:;
 
 						lastbulpos.x = lp2.x; lastbulpos.y = lp2.y; lastbulpos.z = lp2.z;
 						lastbulvel.x = ifor.x; lastbulvel.y = ifor.y; lastbulvel.z = ifor.z;
-						//spawndebris(&spr[j].p,2,0xc08060,64,0);
-						//spawndebris(&spr[j].p,1.0,0xc08060,32,0);
-						//spawndebris(&spr[j].p,0.5,0xc08060,16,0);
-						explodesprite(&spr[j],1,0,3);
 						findrandomspot(&lp.x,&lp.y,&lp.z);
 						spr[j].p.x = lp.x; spr[j].p.y = lp.y; spr[j].p.z = lp.z-((float)spr[i].voxnum->zsiz-spr[i].voxnum->zpiv)*.5;
 
@@ -14382,7 +14080,6 @@ skipalldraw:;
 					{
 							//Decrease worm's health
 						k = ((rand()&31)+1);
-						//spawndebris(&spr[j].p,0.5,(rand()&0x3f3f)+0xc03020,k,1);
 						spr[j].owner -= k;
 						if (spr[j].owner <= 0) //Start death animation
 						{
@@ -14406,7 +14103,6 @@ skipalldraw:;
 							else
 							{
 								playsound(DEBRIS2,70,1.0,&spr[j].p,KSND_3D);
-								explodesprite(&spr[j],0.125,1,5);
 								spr[i].owner = 100; spr[i].flags &= ~4; //Make sprite visible again
 								findrandomspot(&lp.x,&lp.y,&lp.z);
 								spr[j].p.x = lp.x; spr[j].p.y = lp.y; spr[j].p.z = lp.z-((float)spr[j].voxnum->zsiz-spr[j].voxnum->zpiv)*.5;
@@ -14420,7 +14116,6 @@ skipalldraw:;
 								strcpy(message,"Type \"/monst\" to disable monsters"); messagetimeout = totclk+4000;
 							}
 							playsound(MONHURT2,spr[j].owner,1.0,&spr[j].p,KSND_MOVE);
-							explodesprite(&spr[j],0.5,0,153);
 						}
 						goto travelbul_blowup;
 					}
