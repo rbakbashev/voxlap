@@ -4,6 +4,11 @@ cls
 @set include=%include%;C:\mssdk\include
 @set lib=%lib%;C:\mssdk\lib
 
-nmake game.c
+cl /w /c /J /TP game.c      /Ox /Ob2 /Gs /MD /QIfist
+cl /w /c /J /TP voxlap5.c   /Ox /Ob2 /Gs /MD
+REM ml /w /c /coff v5.asm
+cl /w /c /J /TP kplib.c     /Ox /Ob2 /Gs /MD
+cl /w /c /J /TP sdlmain.c   /Ox /Ob2 /Gs /MD /DUSEKZ /DZOOM_TEST /DNOSOUND
+link game voxlap5 v5 kplib sdlmain lib\x86\SDL2main.lib lib\x86\SDL2.lib ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
 
 game.exe

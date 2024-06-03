@@ -1,13 +1,3 @@
-#if 0
-game.exe: game.obj voxlap5.obj v5.obj kplib.obj sdlmain.obj game.c; link game voxlap5 v5 kplib sdlmain lib\x86\SDL2main.lib lib\x86\SDL2.lib ddraw.lib dinput.lib ole32.lib dxguid.lib user32.lib gdi32.lib /opt:nowin98
-game.obj: game.c voxlap5.h sysmain.h; cl /w /c /J /TP game.c      /Ox /Ob2 /Gs /MD /QIfist
-voxlap5.obj: voxlap5.c voxlap5.h;     cl /w /c /J /TP voxlap5.c   /Ox /Ob2 /Gs /MD
-v5.obj: v5.asm;                       ml /w /c /coff v5.asm
-kplib.obj: kplib.c;                   cl /w /c /J /TP kplib.c     /Ox /Ob2 /Gs /MD
-sdlmain.obj: sdlmain.c sysmain.h;     cl /w /c /J /TP sdlmain.c   /Ox /Ob2 /Gs /MD /DUSEKZ /DZOOM_TEST /DNOSOUND
-!if 0
-#endif
-
 //VOXLAP engine by Ken Silverman (http://advsys.net/ken)
 
 #include <math.h>
@@ -2266,8 +2256,4 @@ skipalldraw:;
 		xdim*.5+rx*xdim*.5/rz,ydim*.5+ry*xdim*.5/rz,xdim,ydim,0,ydim);
 	//ang -= .02; if (ang < -0.75) ang = 0;
 	ang += .02; if (ang >= 2.35) ang = -.75;
-#endif
-
-#if 0
-!endif
 #endif
