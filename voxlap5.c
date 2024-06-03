@@ -89,10 +89,6 @@ typedef struct vx5sprite
 	long okfatim;       //make vx5sprite exactly 64 bytes :)
 } vx5sprite;
 
-	//Lighting variables: (used by updatelighting)
-#define MAXLIGHTS 256
-typedef struct { point3d p; float r2, sc; } lightsrctype;
-
 #pragma pack(pop)
 
 #define MAXFRM 1024 //MUST be even number for alignment!
@@ -137,11 +133,6 @@ struct
 	point3d fpico, fpicu, fpicv, fpicw;
 	lpoint3d pico, picu, picv;
 	float daf;
-
-		//Lighting variables: (used by updatelighting)
-	long lightmode; //0 (default), 1:simple lighting, 2:lightsrc lighting
-	lightsrctype lightsrc[MAXLIGHTS]; //(?,?,?),128*128,262144
-	long numlights;
 
 	long fallcheck;
 } vx5;
@@ -196,7 +187,6 @@ extern void setkv6 (vx5sprite *, long);
 extern void updatebbox (long, long, long, long, long, long, long);
 extern void updatevxl ();
 extern void genmipvxl (long, long, long, long);
-extern void updatelighting (long, long, long, long, long, long);
 
 	//Procedural texture functions:
 extern long curcolfunc (lpoint3d *);
@@ -652,17 +642,6 @@ long colorjit (long i, long jitamount)
 {
 	gkrand = (gkrand*27584621)+1;
 	return((gkrand&jitamount)^i);
-}
-
-long lightvox (long i)
-{
-	long r, g, b;
-
-	b = ((unsigned long)i>>24);
-	r = min((((i>>16)&255)*b)>>7,255);
-	g = min((((i>>8 )&255)*b)>>7,255);
-	b = min((((i    )&255)*b)>>7,255);
-	return((r<<16)+(g<<8)+b);
 }
 
 	//Note: ebx = 512 is no change
@@ -6441,119 +6420,6 @@ long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 	return(1);
 }
 
-//EQUIVEC code begins -----------------------------------------------------
-point3d univec[256];
-__declspec(align(8)) short iunivec[256][4];
-
-typedef struct
-{
-	float fibx[45], fiby[45];
-	float azval[20], zmulk, zaddk;
-	long fib[47], aztop, npoints;
-} equivectyp;
-static equivectyp equivec;
-
-#ifdef _MSC_VER
-
-static _inline long dmulshr0 (long a, long d, long s, long t)
-{
-	_asm
-	{
-		mov eax, a
-		imul d
-		mov ecx, eax
-		mov eax, s
-		imul t
-		add eax, ecx
-	}
-}
-
-#endif
-
-void equiind2vec (long i, float *x, float *y, float *z)
-{
-	float r;
-	(*z) = (float)i*equivec.zmulk + equivec.zaddk; r = sqrt(1.f - (*z)*(*z));
-	fcossin((float)i*(GOLDRAT*PI*2),x,y); (*x) *= r; (*y) *= r;
-}
-
-	//Very fast; good quality
-long equivec2indmem (float x, float y, float z)
-{
-	long b, i, j, k, bestc;
-	float xy, zz, md, d;
-
-	xy = atan2(y,x); //atan2 is 150 clock cycles!
-	j = ((*(long *)&z)&0x7fffffff);
-	bestc = equivec.aztop;
-	do
-	{
-		if (j < *(long *)&equivec.azval[bestc]) break;
-		bestc--;
-	} while (bestc);
-
-	zz = z + 1.f;
-	ftol(equivec.fibx[bestc]*xy + equivec.fiby[bestc]*zz - .5,&i);
-	bestc++;
-	ftol(equivec.fibx[bestc]*xy + equivec.fiby[bestc]*zz - .5,&j);
-
-	k = dmulshr0(equivec.fib[bestc+2],i,equivec.fib[bestc+1],j);
-	if ((unsigned long)k < equivec.npoints)
-	{
-		md = univec[k].x*x + univec[k].y*y + univec[k].z*z;
-		j = k;
-	} else md = -2.f;
-	b = bestc+3;
-	do
-	{
-		i = equivec.fib[b] + k;
-		if ((unsigned long)i < equivec.npoints)
-		{
-			d = univec[i].x*x + univec[i].y*y + univec[i].z*z;
-			if (*(long *)&d > *(long *)&md) { md = d; j = i; }
-		}
-		b--;
-	} while (b != bestc);
-	return(j);
-}
-
-void equivecinit (long n)
-{
-	float t0, t1;
-	long z;
-
-		//Init constants for ind2vec
-	equivec.npoints = n;
-	equivec.zmulk = 2 / (float)n; equivec.zaddk = equivec.zmulk*.5 - 1.0;
-
-		//equimemset
-	for(z=n-1;z>=0;z--)
-		equiind2vec(z,&univec[z].x,&univec[z].y,&univec[z].z);
-	if (n&1) //Hack for when n=255 and want a <0,0,0> vector
-		{ univec[n].x = univec[n].y = univec[n].z = 0; }
-
-		//Init Fibonacci table
-	equivec.fib[0] = 0; equivec.fib[1] = 1;
-	for(z=2;z<47;z++) equivec.fib[z] = equivec.fib[z-2]+equivec.fib[z-1];
-
-		//Init fibx/y LUT
-	t0 = .5 / PI; t1 = (float)n * -.5;
-	for(z=0;z<45;z++)
-	{
-		t0 = -t0; equivec.fibx[z] = (float)equivec.fib[z+2]*t0;
-		t1 = -t1; equivec.fiby[z] = ((float)equivec.fib[z+2]*GOLDRAT - (float)equivec.fib[z])*t1;
-	}
-
-	t0 = 1 / ((float)n * PI);
-	for(equivec.aztop=0;equivec.aztop<20;equivec.aztop++)
-	{
-		t1 = 1 - (float)equivec.fib[(equivec.aztop<<1)+6]*t0; if (t1 < 0) break;
-		equivec.azval[equivec.aztop+1] = sqrt(t1);
-	}
-}
-
-//EQUIVEC code ends -------------------------------------------------------
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -6585,7 +6451,6 @@ char ptfaces16[43][8] =
 }
 #endif
 
-static __declspec(align(8)) short lightlist[MAXLIGHTS+1][4];
 static __int64 all32767 = 0x7fff7fff7fff7fff;
 
 #endif
@@ -7161,30 +7026,7 @@ freezesprcont:;
 
 #endif
 
-static void setlighting (long x0, long y0, long z0, long x1, long y1, long z1, long lval)
-{
-	long i, x, y;
-	char *v;
-
-	x0 = max(x0,0); x1 = min(x1,VSID);
-	y0 = max(y0,0); y1 = min(y1,VSID);
-	z0 = max(z0,0); z1 = min(z1,MAXZDIM);
-
-	lval <<= 24;
-
-		//Set 4th byte of colors to full intensity
-	for(y=y0;y<y1;y++)
-		for(x=x0;x<x1;x++)
-		{
-			for(v=sptr[y*VSID+x];v[0];v+=v[0]*4)
-				for(i=1;i<v[0];i++)
-					(*(long *)&v[i<<2]) = (((*(long *)&v[i<<2])&0xffffff)|lval);
-			for(i=1;i<=v[2]-v[1]+1;i++)
-				(*(long *)&v[i<<2]) = (((*(long *)&v[i<<2])&0xffffff)|lval);
-		}
-}
-
-	//Updates Lighting, Mip-mapping, and Floating objects list
+	//Updates mip-mapping
 typedef struct { long x0, y0, z0, x1, y1, z1, csgdel; } bboxtyp;
 #define BBOXSIZ 256
 static bboxtyp bbox[BBOXSIZ];
@@ -7195,8 +7037,6 @@ void updatevxl ()
 
 	for(i=bboxnum-1;i>=0;i--)
 	{
-		if (vx5.lightmode)
-			updatelighting(bbox[i].x0,bbox[i].y0,bbox[i].z0,bbox[i].x1,bbox[i].y1,bbox[i].z1);
 		if (vx5.vxlmipuse > 1)
 			genmipvxl(bbox[i].x0,bbox[i].y0,bbox[i].x1,bbox[i].y1);
 	}
@@ -7227,140 +7067,6 @@ void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1, long csgd
 	bbox[bboxnum].z0 = z0; bbox[bboxnum].z1 = z1;
 	bbox[bboxnum].csgdel = csgdel; bboxnum++;
 	if (bboxnum >= BBOXSIZ) updatevxl();
-}
-
-static long lightlst[MAXLIGHTS];
-static float lightsub[MAXLIGHTS];
-	//Re-calculates lighting byte #4 of all voxels inside bounding box
-void updatelighting (long x0, long y0, long z0, long x1, long y1, long z1)
-{
-	point3d tp;
-	float f, g, h, fx, fy, fz;
-	long i, j, x, y, z, sz0, sz1, offs, cstat, lightcnt;
-	long x2, y2, x3, y3;
-	char *v;
-
-	if (!vx5.lightmode) return;
-	xbsox = -17;
-
-	x0 = max(x0-ESTNORMRAD,0); x1 = min(x1+ESTNORMRAD,VSID);
-	y0 = max(y0-ESTNORMRAD,0); y1 = min(y1+ESTNORMRAD,VSID);
-	z0 = max(z0-ESTNORMRAD,0); z1 = min(z1+ESTNORMRAD,MAXZDIM);
-
-	x2 = x0; y2 = y0;
-	x3 = x1; y3 = y1;
-	for(y0=y2;y0<y3;y0=y1)
-	{
-		y1 = min(y0+64,y3);  //"justfly -" (256 lights): +1024:41sec 512:29 256:24 128:22 64:21 32:21 16:21
-		for(x0=x2;x0<x3;x0=x1)
-		{
-			x1 = min(x0+64,x3);
-
-
-			if (vx5.lightmode == 2)
-			{
-				lightcnt = 0; //Find which lights are close enough to affect rectangle
-				for(i=vx5.numlights-1;i>=0;i--)
-				{
-					ftol(vx5.lightsrc[i].p.x,&x);
-					ftol(vx5.lightsrc[i].p.y,&y);
-					ftol(vx5.lightsrc[i].p.z,&z);
-					if (x < x0) x -= x0; else if (x > x1) x -= x1; else x = 0;
-					if (y < y0) y -= y0; else if (y > y1) y -= y1; else y = 0;
-					if (z < z0) z -= z0; else if (z > z1) z -= z1; else z = 0;
-					f = vx5.lightsrc[i].r2;
-					if ((float)(x*x+y*y+z*z) < f)
-					{
-						lightlst[lightcnt] = i;
-						lightsub[lightcnt] = 1/(sqrt(f)*f);
-						lightcnt++;
-					}
-				}
-			}
-
-			for(y=y0;y<y1;y++)
-				for(x=x0;x<x1;x++)
-				{
-					v = sptr[y*VSID+x]; cstat = 0;
-					while (1)
-					{
-						if (!cstat)
-						{
-							sz0 = ((long)v[1]); sz1 = ((long)v[2])+1; offs = 7-(sz0<<2);
-							cstat = 1;
-						}
-						else
-						{
-							sz0 = ((long)v[2])-((long)v[1])-((long)v[0])+2;
-							if (!v[0]) break; v += v[0]*4;
-							sz1 = ((long)v[3]); sz0 += sz1; offs = 3-(sz1<<2);
-							cstat = 0;
-						}
-						if (z0 > sz0) sz0 = z0;
-						if (z1 < sz1) sz1 = z1;
-						if (vx5.lightmode < 2)
-						{
-							for(z=sz0;z<sz1;z++)
-							{
-								estnorm(x,y,z,&tp);
-								ftol((tp.y*.5+tp.z)*64.f+103.5f,&i);
-								v[(z<<2)+offs] = *(char *)&i;
-							}
-						}
-						else
-						{
-							for(z=sz0;z<sz1;z++)
-							{
-								estnorm(x,y,z,&tp);
-								f = (tp.y*.5+tp.z)*16+47.5;
-								for(i=lightcnt-1;i>=0;i--)
-								{
-									j = lightlst[i];
-									fx = vx5.lightsrc[j].p.x-(float)x;
-									fy = vx5.lightsrc[j].p.y-(float)y;
-									fz = vx5.lightsrc[j].p.z-(float)z;
-									h = tp.x*fx+tp.y*fy+tp.z*fz; if (*(long *)&h >= 0) continue;
-									g = fx*fx+fy*fy+fz*fz; if (g >= vx5.lightsrc[j].r2) continue;
-
-										//g = 1.0/(g*sqrt(g))-lightsub[i]; //1.0/g;
-									if (cputype&(1<<25))
-									{
-										_asm
-										{
-											movss xmm0, g        ;xmm0=g
-											rcpss xmm1, xmm0     ;xmm1=1/g
-											rsqrtss xmm0, xmm0   ;xmm0=1/sqrt(g)
-											mulss xmm1, xmm0     ;xmm1=1/(g*sqrt(g))
-											mov eax, i
-											subss xmm1, lightsub[eax*4]
-											movss g, xmm1
-										}
-									}
-									else
-									{
-										_asm
-										{
-											movd mm0, g
-											pfrcp mm1, mm0
-											pfrsqrt mm0, mm0
-											pfmul mm0, mm1
-											mov eax, i
-											pfsub mm0, lightsub[eax*4]
-											movd g, xmm0
-											femms
-										}
-									}
-									f -= g*h*vx5.lightsrc[j].sc;
-								}
-								if (*(long *)&f > 0x437f0000) f = 255; //0x437f0000 is 255.0
-								ftol(f,&i);
-								v[(z<<2)+offs] = *(char *)&i;
-							}
-						}
-					}
-				}
-		}
-	}
 }
 
 //----------------------------------------------------------------------------
@@ -7551,23 +7257,6 @@ long initvoxlap ()
 	for(i=0;i<=25*5;i+=5) xbsbuf[i] = 0x00000000ffffffff;
 	for(z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
 
-		//Initialize univec normals (for KV6 lighting)
-	equivecinit(255);
-	//for(i=0;i<255;i++)
-	//{
-	//   univec[i].z = ((float)((i<<1)-254))/255.0;
-	//   f = sqrt(1.0 - univec[i].z*univec[i].z);
-	//   fcossin((float)i*(GOLDRAT*PI*2),&univec[i].x,&univec[i].y);
-	//   univec[i].x *= f; univec[i].y *= f;
-	//}
-	//univec[255].x = univec[255].y = univec[255].z = 0;
-	for(i=0;i<256;i++)
-	{
-		iunivec[i][0] = (short)(univec[i].x*4096.0);
-		iunivec[i][1] = (short)(univec[i].y*4096.0);
-		iunivec[i][2] = (short)(univec[i].z*4096.0);
-		iunivec[i][3] = 4096;
-	}
 	ucossininit();
 
 	memset(mixn,0,sizeof(mixn));
@@ -7585,8 +7274,6 @@ long initvoxlap ()
 	vx5.pic = 0;
 	vx5.cliphitnum = 0;
 	vx5.flstnum = 0;
-	vx5.lightmode = 0;
-	vx5.numlights = 0;
 	vx5.kv6col = 0x808080;
 	vx5.vxlmipuse = 1;
 	vx5.fogcol = -1;
@@ -7628,7 +7315,6 @@ long initmap ()
 		exit(1);
 	}
 
-	vx5.lightmode = 1;
 	vx5.vxlmipuse = 9;
 	vx5.mipscandist = 192;
 	vx5.fallcheck = 1;
