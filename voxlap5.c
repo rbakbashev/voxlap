@@ -8084,75 +8084,11 @@ long initvoxlap ()
 	return(0);
 }
 
-#if 0 //ndef _WIN32
-	long i, j, k, l;
-	char *v;
-
-	j = k = l = 0;
-	for(i=0;i<VSID*VSID;i++)
-	{
-		for(v=sptr[i];v[0];v+=v[0]*4) { j++; k += v[2]-v[1]+1; l += v[0]-1; }
-		k += v[2]-v[1]+1; l += v[2]-v[1]+1;
-	}
-
-	printf("VOXLAP5 programmed by Ken Silverman (www.advsys.net/ken)\n");
-	printf("Please DO NOT DISTRIBUTE! If this leaks, I will not be happy.\n\n");
-	//printf("This copy licensed to:  \n\n");
-	printf("Memory statistics upon exit: (all numbers in bytes)");
-	printf("\n");
-	if (screen) printf("   screen: %8ld\n",imageSize);
-	printf("    radar: %8ld\n",max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8));
-	printf("  bacsptr: %8ld\n",sizeof(bacsptr));
-	printf("     sptr: %8ld\n",(VSID*VSID)<<2);
-	printf("     vbuf: %8ld(%8ld)\n",(j+VSID*VSID+l)<<2,VOXSIZ);
-	printf("     vbit: %8ld(%8ld)\n",VOXSIZ>>5);
-	printf("\n");
-	printf("vbuf head: %8ld\n",(j+VSID*VSID)<<2);
-	printf("vbuf cols: %8ld\n",l<<2);
-	printf("     fcol: %8ld\n",k<<2);
-	printf("     ccol: %8ld\n",(l-k)<<2);
-	printf("\n");
-	printf("%.2f bytes/column\n",(float)((j+VSID*VSID+l)<<2)/(float)(VSID*VSID));
-#endif
-
 // ----- GAME.C code begins
-
-#define HITWALL "wav/quikdrop.wav"
-#define BLOWUP "wav/blowup.wav"
-#define DEBRIS "wav/debris.wav"
-#define DEBRIS2 "wav/plop.wav"
-#define BOUNCE "wav/bounce.wav"
-#define DIVEBORD "wav/divebord.wav"
-#define PICKUP "wav/pickup.wav"
-#define DOOROPEN "wav/dooropen.wav"
-#define SHOOTBUL "wav/shootgun.wav"
-#define MACHINEGUN "wav/shoot.wav"
-#define PLAYERHURT "wav/hit.wav"
-#define PLAYERDIE "wav/no!.wav"
-#define MONSHOOT "wav/monshoot.wav"
-#define MONHURT "wav/gothit.wav"
-#define MONHURT2 "wav/hurt.wav"
-#define MONDIE "wav/mondie.wav"
-#define TALK "wav/pop2.wav"
-#define WOODRUB "wav/woodrub.wav"
-static long volpercent = 100;
-
-char cursxlnam[MAX_PATH+1];
-long capturecount = 0, disablemonsts = 1;
-
-long sxleng = 0;
 
 	//Player position variables:
 #define CLIPRAD 5
 dpoint3d ipos, istr, ihei, ifor, ivel;
-
-	//Tile variables: (info telling where status bars & menus are stored)
-typedef struct { long f, p, x, y; } tiletype;
-#define FONTXDIM 9
-#define FONTYDIM 12
-long showtarget = 1;
-
-long numsprites, spr2goaltim = 0;
 
 long lockanginc = 0;
 
@@ -8164,139 +8100,39 @@ double odtotclk, dtotclk;
 float fsynctics;
 long totclk;
 
-void findrandomspot (long *x, long *y, long *z)
-{
-	long cnt;
-
-	cnt = 64;
-	do
-	{
-		(*x) = (rand()&(VSID-1));
-		(*y) = (rand()&(VSID-1));
-		for((*z)=255;(*z)>=0;(*z)--)
-			if (!isvoxelsolid(*x,*y,*z)) break;
-		cnt--;
-	} while (((*z) < 0) && (cnt > 0));
-}
-
-	//Heightmap for bottom
-unsigned char bothei[32*32], botheimin;
-long botcol[32*32];
-long botcolfunc (lpoint3d *p) { return(botcol[(p->y&(32-1))*32+(p->x&(32-1))]); }
-void botinit ()
-{
-	float f, g;
-	long i, j, x, y, c;
-	float fsc[4+14] = {.4,.45,.55,.45,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
-	long col[4+14] = {0x80453010,0x80403510,0x80403015,0x80423112,
-							0x80403013,0x80433010,0x80403313,0x80403310,0x80433013,
-							0x80403310,0x80403310,0x80433013,0x80433010,0x80403310,
-							0x80433010,0x80403013,0x80433310,0x80403013,
-							};
-	long xpos[4+14] = {0,16, 3,20,  8,24, 0, 7,25,19,12,26,10, 3,29,11,18,25};
-	long ypos[4+14] = {0, 5,16,22,  1, 3, 8, 8, 9,13,15,16,12,24,24,28,29,29};
-	long rad[4+14] = {68,51,78,67, 20,21,25,19,22,26,18,24,25,23,25,17,23,25};
-
-		//Initialize solid heightmap at bottom of map
-	botheimin = 255;
-	for(y=0;y<32;y++)
-		for(x=0;x<32;x++)
-		{
-			f = 254.0; c = 0x80403010;
-			for(j=0;j<4+14;j++)
-			{
-				i = (((xpos[j]-x)&31)-16)*(((xpos[j]-x)&31)-16)+
-					 (((ypos[j]-y)&31)-16)*(((ypos[j]-y)&31)-16);
-				if (i >= rad[j]) continue;
-				g = 255.0-sqrt((float)(rad[j]-i))*fsc[j];
-				if (g < f) { f = g; c = col[j]; }
-			}
-			i = y*32+x; botcol[i] = (((rand()<<15)+rand())&0x30303)+c;
-			bothei[i] = (unsigned char)f;
-			if (bothei[i] < botheimin) botheimin = bothei[i];
-		}
-}
-
 long initmap ()
 {
-	kv6data *tempkv6;
-	lpoint3d lp;
-	float f, g;
-	long i, j, k;
-	char tempnam[MAX_PATH], *vxlnam, *skynam, *kv6nam, *userst;
+	char cursxlnam[MAX_PATH+1] = "vxl/default.sxl";
+	char *vxlnam, *skynam, *userst;
 
-		//Initialize solid height&color map at bottom of world
-	botinit();
-
-	i = strlen(cursxlnam); numsprites = 0;
-	if ((i >= 4) && ((cursxlnam[i-3] == 'S') || (cursxlnam[i-3] == 's')))
-	{
-		if (loadsxl(cursxlnam,&vxlnam,&skynam,&userst))
-		{  //.SXL valid so load sprite info out of .SXL
-
-			if (!loadvxl(vxlnam,&ipos,&istr,&ihei,&ifor))
-				printf("failed to load '%s'\n", vxlnam);
-
-		} else
-			printf("failed to load '%s'\n", cursxlnam);
+	if (!loadsxl(cursxlnam,&vxlnam,&skynam,&userst)) {
+		printf("failed to load '%s'\n", cursxlnam);
+		exit(1);
 	}
-	else if ((i >= 4) && ((cursxlnam[i-3] == 'V') || (cursxlnam[i-3] == 'v')))
-	{
-		if (!loadvxl(cursxlnam,&ipos,&istr,&ihei,&ifor))
-			printf("failed to load '%s'\n", cursxlnam);
+
+	if (!loadvxl(vxlnam,&ipos,&istr,&ihei,&ifor)) {
+		printf("failed to load '%s'\n", vxlnam);
+		exit(1);
 	}
-	else
-		printf("failed to load anything\n");
 
 	vx5.lightmode = 1;
-	vx5.vxlmipuse = 9; vx5.mipscandist = 192;
+	vx5.vxlmipuse = 9;
+	vx5.mipscandist = 192;
 	vx5.fallcheck = 1;
+
 	updatevxl();
 
 	vx5.maxscandist = (long)(VSID*1.42);
 
-	//vx5.fogcol = 0x6f6f7f; vx5.maxscandist = 768; //TEMP HACK!!!
-
 	ivel.x = ivel.y = ivel.z = 0;
 
-	return(0);
+	return 0;
 }
 
 long initapp (long argc, char **argv)
 {
-	long i, j, k, z, argfilindex, cpuoption = -1;
-
 	prognam = "\"Ken-VOXLAP\" test game";
-	xres = 640; yres = 480; colbits = 32; fullscreen = 0; argfilindex = -1;
-	for(i=argc-1;i>0;i--)
-	{
-		if ((argv[i][0] != '/') && (argv[i][0] != '-')) { argfilindex = i; continue; }
-		if (!stricmp(&argv[i][1],"win")) { fullscreen = 0; continue; }
-		if (!stricmp(&argv[i][1],"3dn")) { cpuoption = 0; continue; }
-		if (!stricmp(&argv[i][1],"sse")) { cpuoption = 1; continue; }
-		if (!stricmp(&argv[i][1],"sse2")) { cpuoption = 2; continue; }
-		//if (!stricmp(&argv[i][1],"?")) { showinfo(); return(-1); }
-		if ((argv[i][1] >= '0') && (argv[i][1] <= '9'))
-		{
-			k = 0; z = 0;
-			for(j=1;;j++)
-			{
-				if ((argv[i][j] >= '0') && (argv[i][j] <= '9'))
-					{ k = (k*10+argv[i][j]-48); continue; }
-				switch (z)
-				{
-					case 0: xres = k; break;
-					case 1: yres = k; break;
-					//case 2: colbits = k; break;
-				}
-				if (!argv[i][j]) break;
-				z++; if (z > 2) break;
-				k = 0;
-			}
-		}
-	}
-	if (xres > MAXXDIM) xres = MAXXDIM;
-	if (yres > MAXYDIM) yres = MAXYDIM;
+	xres = 640; yres = 480; colbits = 32; fullscreen = 0;
 
 	if (initvoxlap() < 0) return(-1);
 
@@ -8304,7 +8140,7 @@ long initapp (long argc, char **argv)
 
 		//AthlonXP 2000+: SSE:26.76ms, 3DN:27.34ms, SSE2:28.93ms
 	extern long cputype;
-	switch(cpuoption)
+	switch(2) // SSE2
 	{
 		case 0: cputype &= ~((1<<25)|(1<<26)); cputype |= ((1<<30)|(1<<31)); break;
 		case 1: cputype |= (1<<25); cputype &= ~(1<<26); cputype &= ~((1<<30)|(1<<31)); break;
@@ -8312,8 +8148,6 @@ long initapp (long argc, char **argv)
 		default:;
 	}
 
-	if (argfilindex >= 0) strcpy(cursxlnam,argv[argfilindex]);
-						  else strcpy(cursxlnam,"vxl/default.sxl");
 	if (initmap() < 0) return(-1);
 
 		//Init klock
@@ -8322,7 +8156,7 @@ long initapp (long argc, char **argv)
 
 	fsynctics = 1.f;
 
-	return(0);
+	return 0;
 }
 
 void uninitapp ()
@@ -8448,12 +8282,7 @@ skipalldraw:;
 		else //Out of room... squish player!
 		{
 			puts("You got squished!");
-			do
-			{
-				findrandomspot(&lp.x,&lp.y,&lp.z);
-				ipos.x = lp.x; ipos.y = lp.y; ipos.z = lp.z-CLIPRAD;
-			} while (findmaxcr(ipos.x,ipos.y,ipos.z,CLIPRAD) < CLIPRAD*.9);
-			ivel.x = ivel.y = ivel.z = 0;
+			exit(0);
 		}
 	}
 	f = ivel.x*ivel.x + ivel.y*ivel.y + ivel.z*ivel.z; //Limit maximum velocity
