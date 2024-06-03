@@ -169,7 +169,6 @@ extern long loadsxl (const char *, char **, char **, char **);
 extern char *parspr (vx5sprite *, char **);
 extern void loadnul (dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 extern long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
-extern long savevxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 extern long loadsky (const char *);
 
 	//Screen related functions:
@@ -199,17 +198,10 @@ extern long meltsphere (vx5sprite *, lpoint3d *, long);
 extern long meltspans (vx5sprite *, vspans *, long, lpoint3d *);
 
 	//Physics helper functions:
-extern void orthonormalize (point3d *, point3d *, point3d *);
-extern void dorthonormalize (dpoint3d *, dpoint3d *, dpoint3d *);
-extern void orthorotate (float, float, float, point3d *, point3d *, point3d *);
 extern void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
-extern void axisrotate (point3d *, point3d *, float);
-extern void slerp (point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, float);
 extern long cansee (point3d *, point3d *, lpoint3d *);
-extern void hitscan (dpoint3d *, dpoint3d *, lpoint3d *, long **, long *);
 extern double findmaxcr (double, double, double, double);
 extern void clipmove (dpoint3d *, dpoint3d *, double);
-extern long triscan (point3d *, point3d *, point3d *, point3d *, lpoint3d *);
 extern void estnorm (long, long, long, point3d *);
 
 	//VXL reading functions (fast!):
@@ -4438,111 +4430,6 @@ long cansee (point3d *p0, point3d *p1, lpoint3d *hit)
 	hit->x = a.x; hit->y = a.y; hit->z = a.z; return(!cnt);
 }
 
-	//  p: start position
-	//  d: direction
-	//  h: coordinate of voxel hit (if any)
-	//ind: pointer to surface voxel's 32-bit color (0 if none hit)
-	//dir: 0-5: last direction moved upon hit (-1 if inside solid)
-void hitscan (dpoint3d *p, dpoint3d *d, lpoint3d *h, long **ind, long *dir)
-{
-	long ixi, iyi, izi, dx, dy, dz, dxi, dyi, dzi, z0, z1, minz;
-	float f, kx, ky, kz;
-	char *v;
-
-		//Note: (h->x,h->y,h->z) MUST be rounded towards -inf
-	(h->x) = (long)p->x;
-	(h->y) = (long)p->y;
-	(h->z) = (long)p->z;
-	if ((unsigned long)(h->x|h->y) >= VSID) { (*ind) = 0; (*dir) = -1; return; }
-	ixi = (((((signed long *)&d->x)[1])>>31)|1);
-	iyi = (((((signed long *)&d->y)[1])>>31)|1);
-	izi = (((((signed long *)&d->z)[1])>>31)|1);
-
-	minz = min(h->z,0);
-
-	f = 0x3fffffff/VSID; //Maximum delta value
-	if ((fabs(d->x) >= fabs(d->y)) && (fabs(d->x) >= fabs(d->z)))
-	{
-		kx = 1024.0;
-		if (d->y == 0) ky = f; else ky = min(fabs(d->x/d->y)*1024.0,f);
-		if (d->z == 0) kz = f; else kz = min(fabs(d->x/d->z)*1024.0,f);
-	}
-	else if (fabs(d->y) >= fabs(d->z))
-	{
-		ky = 1024.0;
-		if (d->x == 0) kx = f; else kx = min(fabs(d->y/d->x)*1024.0,f);
-		if (d->z == 0) kz = f; else kz = min(fabs(d->y/d->z)*1024.0,f);
-	}
-	else
-	{
-		kz = 1024.0;
-		if (d->x == 0) kx = f; else kx = min(fabs(d->z/d->x)*1024.0,f);
-		if (d->y == 0) ky = f; else ky = min(fabs(d->z/d->y)*1024.0,f);
-	}
-	ftol(kx,&dxi); ftol((p->x-(float)h->x)*kx,&dx); if (ixi >= 0) dx = dxi-dx;
-	ftol(ky,&dyi); ftol((p->y-(float)h->y)*ky,&dy); if (iyi >= 0) dy = dyi-dy;
-	ftol(kz,&dzi); ftol((p->z-(float)h->z)*kz,&dz); if (izi >= 0) dz = dzi-dz;
-
-	v = sptr[h->y*VSID+h->x];
-	if (h->z >= v[1])
-	{
-		do
-		{
-			if (!v[0]) { (*ind) = 0; (*dir) = -1; return; }
-			v += v[0]*4;
-		} while (h->z >= v[1]);
-		z0 = v[3];
-	} else z0 = minz;
-	z1 = v[1];
-
-	while (1)
-	{
-		//Check cube at: h->x,h->y,h->z
-
-		if ((dz <= dx) && (dz <= dy))
-		{
-			h->z += izi; dz += dzi; (*dir) = 5-(izi>0);
-
-				//Check if h->z ran into anything solid
-			if (h->z < z0)
-			{
-				if (h->z < minz) (*ind) = 0; else (*ind) = (long *)&v[-4];
-				return;
-			}
-			if (h->z >= z1) { (*ind) = (long *)&v[4]; return; }
-		}
-		else
-		{
-			if (dx < dy)
-			{
-				h->x += ixi; dx += dxi; (*dir) = 1-(ixi>0);
-				if ((unsigned long)h->x >= VSID) { (*ind) = 0; return; }
-			}
-			else
-			{
-				h->y += iyi; dy += dyi; (*dir) = 3-(iyi>0);
-				if ((unsigned long)h->y >= VSID) { (*ind) = 0; return; }
-			}
-
-				//Check if (h->x, h->y) ran into anything solid
-			v = sptr[h->y*VSID+h->x];
-			while (1)
-			{
-				if (h->z < v[1])
-				{
-					if (v == sptr[h->y*VSID+h->x]) { z0 = minz; z1 = v[1]; break; }
-					if (h->z < v[3]) { (*ind) = (long *)&v[(h->z-v[3])*4]; return; }
-					z0 = v[3]; z1 = v[1]; break;
-				}
-				else if ((h->z <= v[2]) || (!v[0]))
-					{ (*ind) = (long *)&v[(h->z-v[1])*4+4]; return; }
-
-				v += v[0]*4;
-			}
-		}
-	}
-}
-
 unsigned long calcglobalmass ()
 {
 	unsigned long i, j;
@@ -4612,57 +4499,6 @@ void loadnul (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
 }
 
-
-//Quake3 .BSP loading code begins --------------------------------------------
-typedef struct { long c, i; float z, z1; } vlinerectyp;
-static point3d q3pln[5250];
-static float q3pld[5250], q3vz[256];
-static long q3nod[4850][3], q3lf[4850];
-long vlinebsp (float x, float y, float z0, float z1, float *dvz)
-{
-	vlinerectyp vlrec[64];
-	float z, t;
-	long i, j, vcnt, vlcnt;
-	char vt[256];
-
-	vcnt = 1; i = 0; vlcnt = 0; vt[0] = 17;
-	while (1)
-	{
-		if (i < 0)
-		{
-			if (vt[vcnt-1] != (q3lf[~i]&255))
-				{ dvz[vcnt] = z0; vt[vcnt] = (q3lf[~i]&255); vcnt++; }
-		}
-		else
-		{
-			j = q3nod[i][0]; z = q3pld[j] - q3pln[j].x*x - q3pln[j].y*y;
-			t = q3pln[j].z*z0-z;
-			if ((t < 0) == (q3pln[j].z*z1 < z))
-				{ vlrec[vlcnt].c = 0; i = q3nod[i][(t<0)+1]; }
-			else
-			{
-				z /= q3pln[j].z; j = (q3pln[j].z<0)+1;
-				vlrec[vlcnt].c = 1; vlrec[vlcnt].i = q3nod[i][j];
-				vlrec[vlcnt].z = z; vlrec[vlcnt].z1 = z1;
-				i = q3nod[i][3-j]; z1 = z;
-			}
-			vlcnt++; continue;
-		}
-		do { vlcnt--; if (vlcnt < 0) return(vcnt); } while (!vlrec[vlcnt].c);
-		vlrec[vlcnt].c = 0; i = vlrec[vlcnt].i;
-		z0 = vlrec[vlcnt].z; z1 = vlrec[vlcnt].z1;
-		vlcnt++;
-	}
-	return(0);
-}
-
-	//Stupidly useless declarations:
-void delslab(long *b2, long y0, long y1);
-long *scum2(long x, long y);
-void scum2finish();
-
-//Quake3 .BSP loading code ends ----------------------------------------------
-
 long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
 	FILE *fil;
@@ -4705,24 +4541,6 @@ long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe
 
 	gmipnum = 1; vx5.flstnum = 0;
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
-	return(1);
-}
-
-long savevxl (const char *savfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
-{
-	FILE *fil;
-	long i;
-
-	if (!(fil = fopen(savfilnam,"wb"))) return(0);
-	i = 0x09072000; fwrite(&i,4,1,fil);  //Version
-	i = VSID; fwrite(&i,4,1,fil);
-	i = VSID; fwrite(&i,4,1,fil);
-	fwrite(ipo,24,1,fil);
-	fwrite(ist,24,1,fil);
-	fwrite(ihe,24,1,fil);
-	fwrite(ifo,24,1,fil);
-	for(i=0;i<VSID*VSID;i++) fwrite((void *)sptr[i],slng(sptr[i]),1,fil);
-	fclose(fil);
 	return(1);
 }
 
@@ -4794,61 +4612,6 @@ loadbluesky:;
 	return(0);
 }
 
-void orthonormalize (point3d *v0, point3d *v1, point3d *v2)
-{
-	float t;
-
-	t = 1.0 / sqrt((v0->x)*(v0->x) + (v0->y)*(v0->y) + (v0->z)*(v0->z));
-	(v0->x) *= t; (v0->y) *= t; (v0->z) *= t;
-	t = (v1->x)*(v0->x) + (v1->y)*(v0->y) + (v1->z)*(v0->z);
-	(v1->x) -= t*(v0->x); (v1->y) -= t*(v0->y); (v1->z) -= t*(v0->z);
-	t = 1.0 / sqrt((v1->x)*(v1->x) + (v1->y)*(v1->y) + (v1->z)*(v1->z));
-	(v1->x) *= t; (v1->y) *= t; (v1->z) *= t;
-	(v2->x) = (v0->y)*(v1->z) - (v0->z)*(v1->y);
-	(v2->y) = (v0->z)*(v1->x) - (v0->x)*(v1->z);
-	(v2->z) = (v0->x)*(v1->y) - (v0->y)*(v1->x);
-}
-
-void dorthonormalize (dpoint3d *v0, dpoint3d *v1, dpoint3d *v2)
-{
-	double t;
-
-	t = 1.0 / sqrt((v0->x)*(v0->x) + (v0->y)*(v0->y) + (v0->z)*(v0->z));
-	(v0->x) *= t; (v0->y) *= t; (v0->z) *= t;
-	t = (v1->x)*(v0->x) + (v1->y)*(v0->y) + (v1->z)*(v0->z);
-	(v1->x) -= t*(v0->x); (v1->y) -= t*(v0->y); (v1->z) -= t*(v0->z);
-	t = 1.0 / sqrt((v1->x)*(v1->x) + (v1->y)*(v1->y) + (v1->z)*(v1->z));
-	(v1->x) *= t; (v1->y) *= t; (v1->z) *= t;
-	(v2->x) = (v0->y)*(v1->z) - (v0->z)*(v1->y);
-	(v2->y) = (v0->z)*(v1->x) - (v0->x)*(v1->z);
-	(v2->z) = (v0->x)*(v1->y) - (v0->y)*(v1->x);
-}
-
-void orthorotate (float ox, float oy, float oz, point3d *ist, point3d *ihe, point3d *ifo)
-{
-	float f, t, dx, dy, dz, rr[9];
-
-	fcossin(ox,&ox,&dx);
-	fcossin(oy,&oy,&dy);
-	fcossin(oz,&oz,&dz);
-	f = ox*oz; t = dx*dz; rr[0] =  t*dy + f; rr[7] = -f*dy - t;
-	f = ox*dz; t = dx*oz; rr[1] = -f*dy + t; rr[6] =  t*dy - f;
-	rr[2] = dz*oy; rr[3] = -dx*oy; rr[4] = ox*oy; rr[8] = oz*oy; rr[5] = dy;
-	ox = ist->x; oy = ihe->x; oz = ifo->x;
-	ist->x = ox*rr[0] + oy*rr[3] + oz*rr[6];
-	ihe->x = ox*rr[1] + oy*rr[4] + oz*rr[7];
-	ifo->x = ox*rr[2] + oy*rr[5] + oz*rr[8];
-	ox = ist->y; oy = ihe->y; oz = ifo->y;
-	ist->y = ox*rr[0] + oy*rr[3] + oz*rr[6];
-	ihe->y = ox*rr[1] + oy*rr[4] + oz*rr[7];
-	ifo->y = ox*rr[2] + oy*rr[5] + oz*rr[8];
-	ox = ist->z; oy = ihe->z; oz = ifo->z;
-	ist->z = ox*rr[0] + oy*rr[3] + oz*rr[6];
-	ihe->z = ox*rr[1] + oy*rr[4] + oz*rr[7];
-	ifo->z = ox*rr[2] + oy*rr[5] + oz*rr[8];
-	//orthonormalize(ist,ihe,ifo);
-}
-
 void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
 	double f, t, dx, dy, dz, rr[9];
@@ -4871,85 +4634,6 @@ void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe
 	ist->z = ox*rr[0] + oy*rr[3] + oz*rr[6];
 	ihe->z = ox*rr[1] + oy*rr[4] + oz*rr[7];
 	ifo->z = ox*rr[2] + oy*rr[5] + oz*rr[8];
-	//dorthonormalize(ist,ihe,ifo);
-}
-
-void axisrotate (point3d *p, point3d *axis, float w)
-{
-	point3d ax;
-	float t, c, s, ox, oy, oz, k[9];
-
-	fcossin(w,&c,&s);
-	t = axis->x*axis->x + axis->y*axis->y + axis->z*axis->z; if (t == 0) return;
-	t = 1.0 / sqrt(t); ax.x = axis->x*t; ax.y = axis->y*t; ax.z = axis->z*t;
-
-	t = 1.0-c;
-	k[0] = ax.x*t; k[7] = ax.x*s; oz = ax.y*k[0];
-	k[4] = ax.y*t; k[2] = ax.y*s; oy = ax.z*k[0];
-	k[8] = ax.z*t; k[3] = ax.z*s; ox = ax.z*k[4];
-	k[0] = ax.x*k[0] + c; k[5] = ox - k[7]; k[7] += ox;
-	k[4] = ax.y*k[4] + c; k[6] = oy - k[2]; k[2] += oy;
-	k[8] = ax.z*k[8] + c; k[1] = oz - k[3]; k[3] += oz;
-
-	ox = p->x; oy = p->y; oz = p->z;
-	p->x = ox*k[0] + oy*k[1] + oz*k[2];
-	p->y = ox*k[3] + oy*k[4] + oz*k[5];
-	p->z = ox*k[6] + oy*k[7] + oz*k[8];
-}
-
-void slerp (point3d *istr, point3d *ihei, point3d *ifor,
-				point3d *istr2, point3d *ihei2, point3d *ifor2,
-				point3d *ist, point3d *ihe, point3d *ifo, float rat)
-{
-	point3d ax;
-	float c, s, t, ox, oy, oz, k[9];
-
-	ist->x = istr->x; ist->y = istr->y; ist->z = istr->z;
-	ihe->x = ihei->x; ihe->y = ihei->y; ihe->z = ihei->z;
-	ifo->x = ifor->x; ifo->y = ifor->y; ifo->z = ifor->z;
-
-	ax.x = istr->y*istr2->z - istr->z*istr2->y + ihei->y*ihei2->z - ihei->z*ihei2->y + ifor->y*ifor2->z - ifor->z*ifor2->y;
-	ax.y = istr->z*istr2->x - istr->x*istr2->z + ihei->z*ihei2->x - ihei->x*ihei2->z + ifor->z*ifor2->x - ifor->x*ifor2->z;
-	ax.z = istr->x*istr2->y - istr->y*istr2->x + ihei->x*ihei2->y - ihei->y*ihei2->x + ifor->x*ifor2->y - ifor->y*ifor2->x;
-	t = ax.x*ax.x + ax.y*ax.y + ax.z*ax.z; if (t == 0) return;
-
-		//Based on the vector suck-out method (see ROTATE2.BAS)
-	ox = istr->x*ax.x + istr->y*ax.y + istr->z*ax.z;
-	oy = ihei->x*ax.x + ihei->y*ax.y + ihei->z*ax.z;
-	if (fabs(ox) < fabs(oy))
-		{ c = istr->x*istr2->x + istr->y*istr2->y + istr->z*istr2->z; s = ox*ox; }
-	else
-		{ c = ihei->x*ihei2->x + ihei->y*ihei2->y + ihei->z*ihei2->z; s = oy*oy; }
-	if (t == s) return;
-	c = (c*t - s) / (t-s);
-	if (c < -1) c = -1;
-	if (c > 1) c = 1;
-	fcossin(acos(c)*rat,&c,&s);
-
-	t = 1.0 / sqrt(t); ax.x *= t; ax.y *= t; ax.z *= t;
-
-	t = 1.0f-c;
-	k[0] = ax.x*t; k[7] = ax.x*s; oz = ax.y*k[0];
-	k[4] = ax.y*t; k[2] = ax.y*s; oy = ax.z*k[0];
-	k[8] = ax.z*t; k[3] = ax.z*s; ox = ax.z*k[4];
-	k[0] = ax.x*k[0] + c; k[5] = ox - k[7]; k[7] += ox;
-	k[4] = ax.y*k[4] + c; k[6] = oy - k[2]; k[2] += oy;
-	k[8] = ax.z*k[8] + c; k[1] = oz - k[3]; k[3] += oz;
-
-	ox = ist->x; oy = ist->y; oz = ist->z;
-	ist->x = ox*k[0] + oy*k[1] + oz*k[2];
-	ist->y = ox*k[3] + oy*k[4] + oz*k[5];
-	ist->z = ox*k[6] + oy*k[7] + oz*k[8];
-
-	ox = ihe->x; oy = ihe->y; oz = ihe->z;
-	ihe->x = ox*k[0] + oy*k[1] + oz*k[2];
-	ihe->y = ox*k[3] + oy*k[4] + oz*k[5];
-	ihe->z = ox*k[6] + oy*k[7] + oz*k[8];
-
-	ox = ifo->x; oy = ifo->y; oz = ifo->z;
-	ifo->x = ox*k[0] + oy*k[1] + oz*k[2];
-	ifo->y = ox*k[3] + oy*k[4] + oz*k[5];
-	ifo->z = ox*k[6] + oy*k[7] + oz*k[8];
 }
 
 void expandrle (long x, long y, long *uind)
@@ -6192,138 +5876,6 @@ void settri (point3d *p0, point3d *p1, point3d *p2, long bakit)
 	}
 	scum2finish();
 	updatebbox(vx5.minx,vx5.miny,vx5.minz,vx5.maxx,vx5.maxy,vx5.maxz,0);
-}
-
-	//Known problems:
-	//1. Need to test faces for intersections on p1<->p2 line (not just edges)
-	//2. Doesn't guarantee that hit point/line is purely air (but very close)
-	//3. Piescan is more useful for parts of rope code :/
-static long tripind[24] = {0,4,1,5,2,6,3,7,0,2,1,3,4,6,5,7,0,1,2,3,4,5,6,7};
-long triscan (point3d *p0, point3d *p1, point3d *p2, point3d *hit, lpoint3d *lhit)
-{
-	point3d n, d[8], cp2;
-	float f, g, x0, x1, y0, y1, rx, ry, k0, k1, fx, fy, fz, pval[8];
-	long i, j, k, x, y, z, iz0, iz1, minx, maxx, miny, maxy, didhit;
-
-	didhit = 0;
-
-	if (p0->x < p1->x) { x0 = p0->x; x1 = p1->x; } else { x0 = p1->x; x1 = p0->x; }
-	if (p2->x < x0) x0 = p2->x;
-	if (p2->x > x1) x1 = p2->x;
-	if (p0->y < p1->y) { y0 = p0->y; y1 = p1->y; } else { y0 = p1->y; y1 = p0->y; }
-	if (p2->y < y0) y0 = p2->y;
-	if (p2->y > y1) y1 = p2->y;
-	ftol(x0-.5,&minx); ftol(y0-.5,&miny);
-	ftol(x1-.5,&maxx); ftol(y1-.5,&maxy);
-	for(i=miny;i<=maxy;i++) { min0[i] = 0x7fffffff; max0[i] = 0x80000000; }
-	for(i=minx;i<=maxx;i++) { min1[i] = 0x7fffffff; max1[i] = 0x80000000; }
-	for(i=miny;i<=maxy;i++) { min2[i] = 0x7fffffff; max2[i] = 0x80000000; }
-
-	canseerange(p0,p1);
-	canseerange(p1,p2);
-	canseerange(p2,p0);
-
-	n.x = (p1->z-p0->z)*(p2->y-p1->y) - (p1->y-p0->y) * (p2->z-p1->z);
-	n.y = (p1->x-p0->x)*(p2->z-p1->z) - (p1->z-p0->z) * (p2->x-p1->x);
-	n.z = (p1->y-p0->y)*(p2->x-p1->x) - (p1->x-p0->x) * (p2->y-p1->y);
-	f = 1.0 / sqrt(n.x*n.x + n.y*n.y + n.z*n.z); if (n.z < 0) f = -f;
-	n.x *= f; n.y *= f; n.z *= f;
-
-	if (n.z > .01)
-	{
-		f = -1.0 / n.z; rx = n.x*f; ry = n.y*f;
-		k0 = ((n.x>=0)-p0->x)*rx + ((n.y>=0)-p0->y)*ry - ((n.z>=0)-p0->z) + .5;
-		k1 = ((n.x< 0)-p0->x)*rx + ((n.y< 0)-p0->y)*ry - ((n.z< 0)-p0->z) - .5;
-	}
-	else { rx = 0; ry = 0; k0 = -2147000000.0; k1 = 2147000000.0; }
-
-	cp2.x = p2->x; cp2.y = p2->y; cp2.z = p2->z;
-
-	for(y=miny;y<=maxy;y++)
-		for(x=min0[y];x<=max0[y];x++)
-		{
-			f = (float)x*rx + (float)y*ry; ftol(f+k0,&iz0); ftol(f+k1,&iz1);
-			if (iz0 < min1[x]) iz0 = min1[x];
-			if (iz1 > max1[x]) iz1 = max1[x];
-			if (iz0 < min2[y]) iz0 = min2[y];
-			if (iz1 > max2[y]) iz1 = max2[y];
-			for(z=iz0;z<=iz1;z++)
-			{
-				if (!isvoxelsolid(x,y,z)) continue;
-
-				for(i=0;i<8;i++)
-				{
-					d[i].x = (float)(( i    &1)+x);
-					d[i].y = (float)(((i>>1)&1)+y);
-					d[i].z = (float)(((i>>2)&1)+z);
-					pval[i] = (d[i].x-p0->x)*n.x + (d[i].y-p0->y)*n.y + (d[i].z-p0->z)*n.z;
-				}
-				for(i=0;i<24;i+=2)
-				{
-					j = tripind[i+0];
-					k = tripind[i+1];
-					if (((*(long *)&pval[j])^(*(long *)&pval[k])) < 0)
-					{
-						f = pval[j]/(pval[j]-pval[k]);
-						fx = (d[k].x-d[j].x)*f + d[j].x;
-						fy = (d[k].y-d[j].y)*f + d[j].y;
-						fz = (d[k].z-d[j].z)*f + d[j].z;
-
-							//         (p0->x,p0->y,p0->z)
-							//             _|     |_
-							//           _|     .   |_
-							//         _|  (fx,fy,fz) |_
-							//       _|                 |_
-							//(p1->x,p1->y,p1->z)-.----(cp2.x,cp2.y,cp2.z)
-	
-						if ((fabs(n.z) > fabs(n.x)) && (fabs(n.z) > fabs(n.y)))
-						{ //x,y
-						  // ix = p1->x + (cp2.x-p1->x)*t;
-						  // iy = p1->y + (cp2.y-p1->y)*t;
-						  //(iz = p1->z + (cp2.z-p1->z)*t;)
-						  // ix = p0->x + (fx-p0->x)*u;
-						  // iy = p0->y + (fy-p0->y)*u;
-						  // (p1->x-cp2.x)*t + (fx-p0->x)*u = p1->x-p0->x;
-						  // (p1->y-cp2.y)*t + (fy-p0->y)*u = p1->y-p0->y;
-	
-							f = (p1->x-cp2.x)*(fy-p0->y) - (p1->y-cp2.y)*(fx-p0->x);
-							if ((*(long *)&f) == 0) continue;
-							f = 1.0 / f;
-							g = ((p1->x-cp2.x)*(p1->y-p0->y) - (p1->y-cp2.y)*(p1->x-p0->x))*f;
-							//NOTE: The following trick assumes g not * or / by f!
-							//if (((*(long *)&g)-(*(long *)&f))^(*(long *)&f)) >= 0) continue;
-							if ((*(long *)&g) < 0x3f800000) continue;
-							g = ((p1->x-p0->x)*(fy-p0->y) - (p1->y-p0->y)*(fx-p0->x))*f;
-						}
-						else if (fabs(n.y) > fabs(n.x))
-						{ //x,z
-							f = (p1->x-cp2.x)*(fz-p0->z) - (p1->z-cp2.z)*(fx-p0->x);
-							if ((*(long *)&f) == 0) continue;
-							f = 1.0 / f;
-							g = ((p1->x-cp2.x)*(p1->z-p0->z) - (p1->z-cp2.z)*(p1->x-p0->x))*f;
-							if ((*(long *)&g) < 0x3f800000) continue;
-							g = ((p1->x-p0->x)*(fz-p0->z) - (p1->z-p0->z)*(fx-p0->x))*f;
-						}
-						else
-						{ //y,z
-							f = (p1->y-cp2.y)*(fz-p0->z) - (p1->z-cp2.z)*(fy-p0->y);
-							if ((*(long *)&f) == 0) continue;
-							f = 1.0 / f;
-							g = ((p1->y-cp2.y)*(p1->z-p0->z) - (p1->z-cp2.z)*(p1->y-p0->y))*f;
-							if ((*(long *)&g) < 0x3f800000) continue;
-							g = ((p1->y-p0->y)*(fz-p0->z) - (p1->z-p0->z)*(fy-p0->y))*f;
-						}
-						if ((*(unsigned long *)&g) >= 0x3f800000) continue;
-						(hit->x) = fx; (hit->y) = fy; (hit->z) = fz;
-						(lhit->x) = x; (lhit->y) = y; (lhit->z) = z; didhit = 1;
-						(cp2.x) = (cp2.x-p1->x)*g + p1->x;
-						(cp2.y) = (cp2.y-p1->y)*g + p1->y;
-						(cp2.z) = (cp2.z-p1->z)*g + p1->z;
-					}
-				}
-			}
-		}
-	return(didhit);
 }
 
 // ------------------------ CONVEX 3D HULL CODE BEGINS ------------------------
