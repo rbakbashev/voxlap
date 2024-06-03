@@ -184,7 +184,6 @@ extern void drawline3d (float, float, float, float, float, float, long);
 extern long project2d (float, float, float, float *, float *, float *);
 extern void drawpicinquad (long, long, long, long, long, long, long, long, float, float, float, float, float, float, float, float);
 extern void drawpolyquad (long, long, long, long, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float);
-extern void drawtile (long, long, long, long, long, long, long, long, long, long, long, long);
 
 	//Sprite related functions:
 extern kv6data *getkv6 (const char *);
@@ -7836,200 +7835,6 @@ static __int64 mskp255 = 0x00ff00ff00ff00ff;
 static __int64 mskn255 = 0xff01ff01ff01ff01;
 static __int64 rgbmask64 = 0xffffff00ffffff;
 
-	//(tf,tp,tx,ty,tcx,tcy): Tile source, (tcx&tcy) is texel (<<16) at (sx,sy)
-	//(sx,sy,xz,yz) screen coordinates and x&y zoom, all (<<16)
-	//(black,white): black & white shade scale (ARGB format)
-	//   Note: if alphas of black&white are same, then alpha channel ignored
-void drawtile (long tf, long tp, long tx, long ty, long tcx, long tcy,
-					long sx, long sy, long xz, long yz, long black, long white)
-{
-	long sx0, sy0, sx1, sy1, x0, y0, x1, y1, x, y, u, v, ui, vi, uu, vv;
-	long p, i, j, a;
-
-	if (!tf) return;
-	sx0 = sx - mulshr16(tcx,xz); sx1 = sx0 + xz*tx;
-	sy0 = sy - mulshr16(tcy,yz); sy1 = sy0 + yz*ty;
-	x0 = max((sx0+65535)>>16,0); x1 = min((sx1+65535)>>16,xres);
-	y0 = max((sy0+65535)>>16,0); y1 = min((sy1+65535)>>16,yres);
-	ui = shldiv16(65536,xz); u = mulshr16(-sx0,ui);
-	vi = shldiv16(65536,yz); v = mulshr16(-sy0,vi);
-	if (!((black^white)&0xff000000)) //Ignore alpha
-	{
-			//for(y=y0,vv=y*vi+v;y<y1;y++,vv+=vi)
-			//{
-			//   p = ylookup[y] + frameplace; j = (vv>>16)*tp + tf;
-			//   for(x=x0,uu=x*ui+u;x<x1;x++,uu+=ui)
-			//      *(long *)((x<<2)+p) = *(long *)(((uu>>16)<<2) + j);
-			//}
-		if ((xz == 32768) && (yz == 32768))
-		{
-			long plc;
-			for(y=y0,vv=y*vi+v;y<y1;y++,vv+=vi)
-			{
-				p = ylookup[y] + frameplace;
-				plc = (((x0*ui+u)>>16)<<2) + (vv>>16)*tp + tf;
-				_asm
-				{
-					push ebx
-					mov eax, x1
-					mov ebx, p
-					lea ebx, [ebx+eax*4]
-					sub eax, x0
-					mov ecx, plc
-					lea ecx, [ecx+eax*8]
-					mov edx, tp
-					add edx, ecx
-					neg eax
-						;eax: x0-x1
-						;ebx: p + x1*4
-						;ecx: plc + (x1-x0)*8
-						;edx: plc + (x1-x0)*8 + tp
-	  begdthalf:movq mm0, [eax*8+ecx]   ;mm0: A1R1G1B1 A0R0G0B0
-					pavgb mm0, [eax*8+edx]  ;mm0: A1R1G1B1 A0R0G0B0
-					pshufw mm1, mm0, 0xe    ;mm1: ???????? A1R1G1B1
-					pavgb mm0, mm1          ;mm1: ???????? AaRrGgBb
-					movd [eax*4+ebx], mm0
-					inc eax
-					jnz short begdthalf
-					pop ebx
-				}
-			}
-			_asm emms
-		}
-		else
-		{
-			long plc = x0*ui+u;
-			for(y=y0,vv=y*vi+v;y<y1;y++,vv+=vi)
-			{
-				p = ylookup[y] + frameplace; j = (vv>>16)*tp + tf;
-
-					//for(x=x0,uu=plc;x<x1;x++,uu+=ui)
-					//   *(long *)((x<<2)+p) = *(long *)(((uu>>16)<<2) + j);
-				_asm
-				{
-					push ebx
-					push esi
-					push edi
-					mov edi, x1
-					mov edx, x0
-					cmp edx, edi
-					jge short enddtnhalf
-					mov eax, p
-					mov esi, ui
-					mov ecx, plc
-					mov ebx, j
-					sub edx, edi
-					lea edi, [edi*4+eax]
-begdtnhalf:
-#if 0
-					mov eax, ecx          ;simple loop
-					shr eax, 16
-					mov eax, [eax*4+ebx]
-					add ecx, esi
-					mov [edx*4+edi], eax
-					add edx, 1
-					jnz short begdtnhalf
-#else
-					lea eax, [ecx+esi]    ;unrolled once loop; uses movntq
-					shr ecx, 16
-					add edx, 1
-					movd mm0, [ecx*4+ebx]
-					lea ecx, [eax+esi]
-					jz short preenddtnhalf
-					shr eax, 16
-					punpckldq mm0, [eax*4+ebx]
-					movntq [edx*4+edi-4], mm0
-					add edx, 1
-					jnz short begdtnhalf
-					jmp short enddtnhalf
-preenddtnhalf: movd [edx*4+edi-4], mm0
-#endif
-enddtnhalf:    pop edi
-					pop esi
-					pop ebx
-				}
-			}
-			_asm emms
-		}
-	}
-	else //Use alpha for masking
-	{
-			//Init for black/white code
-		_asm
-		{
-			pxor mm7, mm7
-			movd mm5, white
-			movd mm4, black
-			punpcklbw mm5, mm7   ;mm5: [00Wa00Wr00Wg00Wb]
-			punpcklbw mm4, mm7   ;mm4: [00Ba00Br00Bg00Bb]
-			psubw mm5, mm4       ;mm5: each word range: -255 to 255
-			movq mm0, mm5        ;if (? == -255) ? = -256;
-			movq mm1, mm5        ;if (? ==  255) ? =  256;
-			pcmpeqw mm0, mskp255 ;if (mm0.w[#] == 0x00ff) mm0.w[#] = 0xffff
-			pcmpeqw mm1, mskn255 ;if (mm1.w[#] == 0xff01) mm1.w[#] = 0xffff
-			psubw mm5, mm0
-			paddw mm5, mm1
-			psllw mm5, 4         ;mm5: [-WBa-WBr-WBg-WBb]
-			movq mm6, rgbmask64
-		}
-		for(y=y0,vv=y*vi+v;y<y1;y++,vv+=vi)
-		{
-			p = ylookup[y] + frameplace; j = (vv>>16)*tp + tf;
-			for(x=x0,uu=x*ui+u;x<x1;x++,uu+=ui)
-			{
-				i = *(long *)(((uu>>16)<<2) + j);
-
-				_asm
-				{
-						;                (mm5)              (mm4)
-						;i.a = i.a*(white.a-black.a)/256 + black.a
-						;i.r = i.r*(white.r-black.r)/256 + black.r
-						;i.g = i.g*(white.g-black.g)/256 + black.g
-						;i.b = i.b*(white.b-black.b)/256 + black.b
-					movd mm0, i           ;mm1: [00000000AaRrGgBb]
-					punpcklbw mm0, mm7    ;mm1: [00Aa00Rr00Gg00Bb]
-					psllw mm0, 4          ;mm1: [0Aa00Rr00Gg00Bb0]
-					pmulhw mm0, mm5       ;mm1: [--Aa--Rr--Gg--Bb]
-					paddw mm0, mm4        ;mm1: [00Aa00Rr00Gg00Bb]
-					movq mm1, mm0
-					packuswb mm0, mm0     ;mm1: [AaRrGgBbAaRrGgBb]
-					movd i, mm0
-				}
-
-					//a = (((unsigned long)i)>>24);
-					//if (!a) continue;
-					//if (a == 255) { *(long *)((x<<2)+p) = i; continue; }
-				if ((unsigned long)(i+0x1000000) < 0x2000000)
-				{
-					if (i < 0) *(long *)((x<<2)+p) = i;
-					continue;
-				}
-				_asm
-				{
-					mov eax, x            ;mm0 = (mm1-mm0)*a + mm0
-					mov edx, p
-					lea eax, [eax*4+edx]
-					movd mm0, [eax]       ;mm0: [00000000AaRrGgBb]
-					;movd mm1, i           ;mm1: [00000000AaRrGgBb]
-					pand mm0, mm6         ;zero alpha from screen pixel
-					punpcklbw mm0, mm7    ;mm0: [00Aa00Rr00Gg00Bb]
-					;punpcklbw mm1, mm7    ;mm1: [00Aa00Rr00Gg00Bb]
-					psubw mm1, mm0        ;mm1: [--Aa--Rr--Gg--Bb] range:+-255
-					psllw mm1, 4          ;mm1: [-Aa0-Rr0-Gg0-Bb0]
-					pshufw mm2, mm1, 0xff ;mm2: [-Aa0-Aa0-Aa0-Aa0]
-					pmulhw mm1, mm2
-					;mov edx, a            ;alphalookup[i] = i*0x001000100010;
-					;pmulhw mm1, alphalookup[edx*8]
-					paddw mm0, mm1
-					packuswb mm0, mm0
-					movd [eax], mm0
-				}
-			}
-		}
-		_asm emms
-	}
-}
-
 void drawline2d (float x1, float y1, float x2, float y2, long col)
 {
 	float dx, dy, fxresm1, fyresm1;
@@ -11996,10 +11801,6 @@ long initvoxlap ()
 	for(i=0;i<=25*5;i+=5) xbsbuf[i] = 0x00000000ffffffff;
 	for(z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
 
-		//Drawtile lookup table:
-	//q = 0;
-	//for(i=0;i<256;i++) { alphalookup[i] = q; q += 0x1000100010; }
-
 		//Initialize univec normals (for KV6 lighting)
 	equivecinit(255);
 	//for(i=0;i<255;i++)
@@ -12140,10 +11941,6 @@ tiletype numb[11], asci[128+18]; //Note: 0-31 of asci unused (512 wasted bytes)
 tiletype target;
 long showtarget = 1;
 
-	//User message:
-char message[256] = {0}, typemessage[256] = {0};
-long messagetimeout = 0, typemode = 0, quitmessagetimeout = 0x80000000;
-
 #define MAXSPRITES 1024 //NOTE: this shouldn't be static!
 #ifdef __cplusplus
 struct spritetype : vx5sprite //Note: C++!
@@ -12184,7 +11981,7 @@ long totclk;
 	//This is used to control the rate of rapid fire
 #define MAXWEAP 4
 long curweap = 1, lastshottime[MAXWEAP] = {0,0,0,0};
-long myhealth = 100, showhealth = 1;
+long myhealth = 100;
 long numdynamite = 0, numjoystick = 0;
 
 	//See AIMGRAV.BAS for derivation
@@ -12779,24 +12576,6 @@ void doframe ()
 		}
 	}
 
-		//Show target in middle of screen
-	if (showtarget)
-		drawtile(target.f,target.p,target.x,target.y,target.x<<15,target.y<<15,
-			xres<<15,yres<<15,65536,65536,0,-1);
-
-		//Show health on bottom of screen
-	if (showhealth)
-	{
-		sprintf(tempbuf,"%d",myhealth); j = strlen(tempbuf);
-		if (xres >= 512) l = 16; else l = 15;
-		for(i=0;i<j;i++)
-		{
-			if ((tempbuf[i] >= '0') && (tempbuf[i] <= '9')) k = tempbuf[i]-'0'; else k = 10;
-			drawtile(numb[k].f,numb[k].p,numb[k].x,numb[k].y,0,numb[k].y<<16,
-				((i*24-j*12)<<l)+(xres<<15),(yres-6)<<16,1<<l,1<<l,0,(min(max(100-myhealth,0),100)*0x010202)^-1);
-		}
-	}
-
 	if (numdynamite > 0)
 	{
 		dpos.x = 0; dpos.y = 0; dpos.z = -2;
@@ -12827,49 +12606,6 @@ void doframe ()
 		orthorotate(dtotclk*2,0,0,&tempspr.s,&tempspr.h,&tempspr.f);
 		tempspr.flags = 0;
 		tempspr.voxnum = kv6[JOYSTICK]; drawsprite(&tempspr);
-	}
-
-		//Show last message
-	if (totclk < messagetimeout)
-	{
-		j = strlen(message); l = 0; lp.x = xres/FONTXDIM; lp.y = 0;
-		while (l < j)
-		{
-			lp.z = min(l+lp.x,j);
-			if (!l) m = ((-l)*FONTXDIM-(((lp.z-l)*FONTXDIM)>>1));
-				else m = ((-l)*FONTXDIM-((lp.x*FONTXDIM)>>1));
-			for(i=l;i<lp.z;i++)
-			{
-				k = message[i]; if (k == '\n') { l = i+1-lp.x; break; }
-				drawtile(asci[k].f,asci[k].p,asci[k].x,asci[k].y,
-							0,-(*(char *)asci[k].f)<<16,
-							((i*FONTXDIM+m)<<16)+(xres<<15),lp.y,
-							65536,65536,0,0xffdfdf7f);
-			}
-			l += lp.x; lp.y += ((FONTYDIM+2)<<16);
-		}
-	}
-
-		//Show typemessage if in typemode
-	if (typemode)
-	{
-		j = strlen(typemessage);
-		lp.x = xres/FONTXDIM; lp.y = yres-32-6-((j-1)/lp.x)*(FONTYDIM+2);
-		for(l=0;l<j;l+=lp.x)
-		{
-			lp.z = min(l+lp.x,j);
-			if (!l) m = ((-l)*FONTXDIM-(((lp.z-l)*FONTXDIM)>>1));
-				else m = ((-l)*FONTXDIM-((lp.x*FONTXDIM)>>1));
-			for(i=l;i<lp.z;i++)
-			{
-				k = typemessage[i];
-				drawtile(asci[k].f,asci[k].p,asci[k].x,asci[k].y,
-							0,(asci[k].y-(*(char *)asci[k].f))<<16,
-							((i*FONTXDIM+m)<<16)+(xres<<15),
-							((l/lp.x)*(FONTYDIM+2)+lp.y)<<16,
-							65536,65536,0,-1);
-			}
-		}
 	}
 
 	stopdirectdraw();
@@ -12973,8 +12709,7 @@ skipalldraw:;
 		}
 		else //Out of room... squish player!
 		{
-			playsound(PLAYERDIE,100,1.0,0,0);
-			strcpy(message,"You got squished!"); messagetimeout = totclk+4000;
+			puts("You got squished!");
 			do
 			{
 				findrandomspot(&lp.x,&lp.y,&lp.z);
@@ -12986,165 +12721,10 @@ skipalldraw:;
 	f = ivel.x*ivel.x + ivel.y*ivel.y + ivel.z*ivel.z; //Limit maximum velocity
 	if (f > 8.0*8.0) { f = 8.0/sqrt(f); ivel.x *= f; ivel.y *= f; ivel.z *= f; }
 
-	if (!typemode)
-	{
-		while (i = keyread()) //Detect 'T' (for typing mode)
-			if (((i&255) == 'T') || ((i&255) == 't'))
-				{ typemode = 1; typemessage[0] = '_'; typemessage[1] = 0; break; }
-	}
-	if (typemode)
-	{
-		while (i = keyread())
-		{
-			if (!(i&255)) continue;
-			i &= 255;
-			j = strlen(typemessage);
-			if (i == 8) //Backspace
-			{
-				if (j > 1) { typemessage[j-2] = '_'; typemessage[j-1] = 0; }
-			}
-			else if (i == 13) //Enter
-			{
-				if (j > 1)
-				{
-					playsound(TALK,100,1.0,0,0);
-					typemessage[j-1] = 0;
-					if (typemessage[0] == '/')
-					{
-						if (!stricmp(&typemessage[1],"fallcheck")) { vx5.fallcheck ^= 1; typemessage[0] = 0; }
-						if (!stricmp(&typemessage[1],"sideshademode"))
-						{
-							if (!vx5.sideshademode) setsideshades(0,28,8,24,12,12); else setsideshades(0,4,1,3,2,2); //setsideshades(0,0,0,0,0,0);
-							typemessage[0] = 0;
-						}
-						if (!_memicmp(&typemessage[1],"faceshade=",10))
-						{
-							char *cptr;
-							tempbuf[0] = tempbuf[1] = tempbuf[2] = tempbuf[3] = tempbuf[4] = tempbuf[5] = 0;
-							cptr = strtok(&typemessage[11],",");
-							if (cptr)
-							{
-								tempbuf[0] = strtol(cptr,0,0);
-								for(k=1;k<6;k++)
-								{
-									cptr = strtok(0,","); if (!cptr) break;
-									tempbuf[k] = strtol(cptr,0,0);
-								}
-							}
-							setsideshades(tempbuf[0],tempbuf[1],tempbuf[2],tempbuf[3],tempbuf[4],tempbuf[5]);
-							typemessage[0] = 0;
-						}
-						if (!stricmp(&typemessage[1],"curvy")) { if (curvystp >= 0) curvystp = ~curvystp; typemessage[0] = 0; }
-						if (!stricmp(&typemessage[1],"monst")) { disablemonsts ^= 1; typemessage[0] = 0; }
-						if (!stricmp(&typemessage[1],"light"))
-						{
-							if (vx5.numlights < MAXLIGHTS)
-							{
-								i = 128; //radius to use
-								vx5.lightsrc[vx5.numlights].p.x = ipos.x;
-								vx5.lightsrc[vx5.numlights].p.y = ipos.y;
-								vx5.lightsrc[vx5.numlights].p.z = ipos.z;
-								vx5.lightsrc[vx5.numlights].r2 = (float)(i*i);
-								vx5.lightsrc[vx5.numlights].sc = 262144.0; //4096.0;
-								vx5.numlights++;
-
-								updatebbox((long)ipos.x-i,(long)ipos.y-i,(long)ipos.z-i,(long)ipos.x+i,(long)ipos.y+i,(long)ipos.z+i,0);
-							}
-							typemessage[0] = 0;
-						}
-						if (!stricmp(&typemessage[1],"lightclear"))
-						{
-							i = 128; //radius to use
-							for(j=vx5.numlights-1;j>=0;j--)
-								updatebbox((long)vx5.lightsrc[j].p.x-i,(long)vx5.lightsrc[j].p.y-i,(long)vx5.lightsrc[j].p.z-i,
-											  (long)vx5.lightsrc[j].p.x+i,(long)vx5.lightsrc[j].p.y+i,(long)vx5.lightsrc[j].p.z+i,0);
-							vx5.numlights = 0; typemessage[0] = 0;
-						}
-						if (!_memicmp(&typemessage[1],"lightmode=",10))
-						{
-							 vx5.lightmode = min(max(atoi(&typemessage[11]),0),2);
-							 updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
-							 typemessage[0] = 0;
-						}
-						if (!_memicmp(&typemessage[1],"curvy=",6))
-						{
-							if (curvystp < 0) curvystp = ~curvystp;
-
-							strcpy(tempbuf,"kv6\\");
-							if (!typemessage[7]) strcat(tempbuf,"desklamp"); else strcat(tempbuf,&typemessage[7]);
-							strcat(tempbuf,".kv6");
-
-							curvykv6 = getkv6(tempbuf);
-							if (curvykv6)
-							{
-								for(kv6data *tempkv6=curvykv6;tempkv6=genmipkv6(tempkv6);); //Generate all lower mip-maps here:
-								curvyspr.p.x = ipos.x + ifor.x*32;
-								curvyspr.p.y = ipos.y + ifor.y*32;
-								curvyspr.p.z = ipos.z + ifor.z*32;
-								curvyspr.s.x = istr.x*+.25; curvyspr.s.y = istr.y*+.25; curvyspr.s.z = istr.z*+.25;
-								curvyspr.h.x = ifor.x*-.25; curvyspr.h.y = ifor.y*-.25; curvyspr.h.z = ifor.z*-.25;
-								curvyspr.f.x = ihei.x*+.25; curvyspr.f.y = ihei.y*+.25; curvyspr.f.z = ihei.z*+.25;
-
-								curvyspr.flags = 0; curvyspr.voxnum = curvykv6;
-							} else curvystp = ~curvystp;
-							typemessage[0] = 0;
-						}
-
-						if (!_memicmp(&typemessage[1],"curvystp=",9)) { curvystp = atoi(&typemessage[10]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"scandist=",9)) { vx5.maxscandist = atoi(&typemessage[10]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"fogcol=",7)) { vx5.fogcol = strtol(&typemessage[8],0,0); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"kv6col=",7)) { vx5.kv6col = strtol(&typemessage[8],0,0); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"anginc=",7)) { vx5.anginc = atoi(&typemessage[8]); if (vx5.anginc > 0) lockanginc = 1; else { lockanginc = 0; vx5.anginc = 1; } typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"vxlmip=",7)) { vx5.mipscandist = atoi(&typemessage[8]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"kv6mip=",7)) { vx5.kv6mipfactor = atoi(&typemessage[8]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"health=",7)) { myhealth = atoi(&typemessage[8]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"numdynamite=",12)) { numdynamite = atoi(&typemessage[13]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"numjoystick=",12)) { numjoystick = atoi(&typemessage[13]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"showtarget=",11)) { showtarget = atoi(&typemessage[12]); typemessage[0] = 0; }
-						if (!_memicmp(&typemessage[1],"showhealth=",11)) { showhealth = atoi(&typemessage[12]); typemessage[0] = 0; }
-					}
-					if (typemessage[0])
-					{
-						//net_send(typemessage); ???
-						strcpy(message,typemessage); messagetimeout = totclk+4000;
-						typemessage[0] = '_'; typemessage[1] = 0;
-					}
-					typemode = 0;
-				}
-			}
-			else
-			{
-				if (j+1 < sizeof(typemessage))
-				{
-					typemessage[j-1] = (char)i;
-					typemessage[j] = '_';
-					typemessage[j+1] = 0;
-				}
-			}
-		}
-	}
-
 	for(i=0;i<MAXWEAP;i++)
 		if (keystatus[i+2]) curweap = i;
 
 	updatevxl();
-
-	if (keystatus[0x4a]) //KP-
-	{
-		keystatus[0x4a] = 0;
-		volpercent = max(volpercent-10,0);
-		sprintf(message,"Volume: %d%%",volpercent);
-		quitmessagetimeout = messagetimeout = totclk+4000;
-		setvolume(volpercent);
-	}
-	if (keystatus[0x4e]) //KP-
-	{
-		keystatus[0x4e] = 0;
-		volpercent = min(volpercent+10,100);
-		sprintf(message,"Volume: %d%%",volpercent);
-		quitmessagetimeout = messagetimeout = totclk+4000;
-		setvolume(volpercent);
-	}
 
 	if (keystatus[0x9c]) //KP Enter
 	{
@@ -13152,39 +12732,6 @@ skipalldraw:;
 		static long macq = 1;
 		macq ^= 1; setacquire(macq,1);
 	}
-
-	if (keystatus[1]) //ESC
-	{
-		keystatus[1] = 0;
-		if (typemode)
-			typemode = 0;
-		else
-		{
-			strcpy(message,"Press Y to quit!");
-			quitmessagetimeout = messagetimeout = totclk+4000;
-		}
-	}
-
-	if (keystatus[0x42]) //F8: change video to random setting!
-	{
-		validmodetype *validmodelist;
-		long validmodecnt;
-
-		keystatus[0x42] = 0;
-		validmodecnt = getvalidmodelist(&validmodelist);
-		do
-		{
-			i = (rand()%validmodecnt);
-		} while ((validmodelist[i].x > 640) || (validmodelist[i].y > 480) || (validmodelist[i].c != 32));
-		changeres(validmodelist[i].x,validmodelist[i].y,validmodelist[i].c,rand()&1);
-		sprintf(message,"%d x %d x %d (",xres,yres,colbits);
-		if (!fullscreen) strcat(message,"windowed)");
-						else strcat(message,"fullscreen)");
-		messagetimeout = totclk+4000;
-	}
-
-	if ((keystatus[0x15]) && (totclk < quitmessagetimeout) &&
-		(!strcmp(message,"Press Y to quit!"))) quitloop(); //'Y'
 }
 
 /// ------- KPLIB code begins
