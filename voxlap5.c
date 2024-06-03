@@ -167,9 +167,7 @@ extern void uninitvoxlap ();
 	//File related functions:
 extern long loadsxl (const char *, char **, char **, char **);
 extern char *parspr (vx5sprite *, char **);
-extern void loadnul (dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 extern long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
-extern long loadsky (const char *);
 
 	//Screen related functions:
 extern void voxsetframebuffer (long, long, long, long);
@@ -252,8 +250,6 @@ extern void voxdontrestore ();
 extern void voxrestore ();
 extern void voxredraw ();
 
-	//High-level (easy) picture loading function:
-extern void kpzload (const char *, int *, int *, int *, int *);
 	//Low-level PNG/JPG functions:
 extern int kpgetdim (const char *, int, int *, int *);
 extern int kprender (const char *, int, int, int, int, int, int, int);
@@ -264,7 +260,6 @@ extern int kzopen (const char *);
 extern int kzread (void *, int);
 extern int kzfilelength ();
 extern int kztell ();
-extern int kzgetc ();
 extern void kzclose ();
 
 #include "sysmain.h"
@@ -4023,66 +4018,13 @@ unsigned long calcglobalmass ()
 	return(j);
 }
 
-void loadnul (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
-{
-	lpoint3d lp0, lp1;
-	long i, x, y;
-	char *v;
-	float f;
-
-	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
-	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
-
-	v = (char *)(&vbuf[1]); //1st dword for voxalloc compare logic optimization
-
-		//Completely re-compile vbuf
-	for(x=0;x<VSID;x++)
-		for(y=0;y<VSID;y++)
-		{
-			sptr[y*VSID+x] = v;
-			i = 0; // + (rand()&1);  //i = default height of plain
-			v[0] = 0;
-			v[1] = i;
-			v[2] = i;
-			v[3] = 0;  //z0 (Dummy filler)
-			//i = ((((x+y)>>3) + ((x^y)>>4)) % 231) + 16;
-			//i = (i<<16)+(i<<8)+i;
-			v += 4;
-			(*(long *)v) = ((x^y)&15)*0x10101+0x807c7c7c; //colorjit(i,0x70707)|0x80000000;
-			v += 4;
-		}
-
-	memset(&sptr[VSID*VSID],0,sizeof(sptr)-VSID*VSID*4);
-	vbiti = (((long)v-(long)vbuf)>>2); //# vbuf longs/vbit bits allocated
-	clearbuf((void *)vbit,vbiti>>5,-1);
-	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
-	vbit[vbiti>>5] = (1<<vbiti)-1;
-
-		//Blow out sphere and stick you inside map
-	vx5.colfunc = jitcolfunc; vx5.curcol = 0x80704030;
-
-	lp0.x = VSID*.5-90; lp0.y = VSID*.5-90; lp0.z = MAXZDIM*.5-45;
-	lp1.x = VSID*.5+90; lp1.y = VSID*.5+90; lp1.z = MAXZDIM*.5+45;
-	setrect(&lp0,&lp1,-1);
-	//lp.x = VSID*.5; lp.y = VSID*.5; lp.z = MAXZDIM*.5; setsphere(&lp,64,-1);
-
-	vx5.globalmass = calcglobalmass();
-
-	ipo->x = VSID*.5; ipo->y = VSID*.5; ipo->z = MAXZDIM*.5; //ipo->z = -16;
-	f = 0.0*PI/180.0;
-	ist->x = cos(f); ist->y = sin(f); ist->z = 0;
-	ihe->x = 0; ihe->y = 0; ihe->z = 1;
-	ifo->x = sin(f); ifo->y = -cos(f); ifo->z = 0;
-
-	gmipnum = 1; vx5.flstnum = 0;
-	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
-}
-
 long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
 	FILE *fil;
 	long i, j, fsiz;
 	char *v, *v2;
+
+	printf("loadvxl %s\n", lodfilnam);
 
 	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
 	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
@@ -4121,74 +4063,6 @@ long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe
 	gmipnum = 1; vx5.flstnum = 0;
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
 	return(1);
-}
-
-long loadsky (const char *skyfilnam)
-{
-	long x, y, xoff, yoff;
-	float ang, f;
-
-	if (skypic) { free((void *)skypic); skypic = skyoff = 0; }
-	xoff = yoff = 0;
-
-	if (!stricmp(skyfilnam,"BLACK")) return(0);
-	if (!stricmp(skyfilnam,"BLUE")) goto loadbluesky;
-
-	kpzload(skyfilnam,(int *)&skypic,(int *)&skybpl,(int *)&skyxsiz,(int *)&skyysiz);
-	if (!skypic)
-	{
-		long r, g, b, *p;
-loadbluesky:;
-			//Load default sky
-		skyxsiz = 512; skyysiz = 1; skybpl = skyxsiz*4;
-		if (!(skypic = (long)malloc(skyysiz*skybpl))) return(-1);
-
-		p = (long *)skypic; y = skyxsiz*skyxsiz;
-		for(x=0;x<=(skyxsiz>>1);x++)
-		{
-			p[x] = ((((x*1081 - skyxsiz*252)*x)/y + 35)<<16)+
-					 ((((x* 950 - skyxsiz*198)*x)/y + 53)<<8)+
-					  (((x* 439 - skyxsiz* 21)*x)/y + 98);
-		}
-		p[skyxsiz-1] = 0x50903c;
-		r = ((p[skyxsiz>>1]>>16)&255);
-		g = ((p[skyxsiz>>1]>>8)&255);
-		b = ((p[skyxsiz>>1])&255);
-		for(x=(skyxsiz>>1)+1;x<skyxsiz;x++)
-		{
-			p[x] = ((((0x50-r)*(x-(skyxsiz>>1)))/(skyxsiz-1-(skyxsiz>>1))+r)<<16)+
-					 ((((0x90-g)*(x-(skyxsiz>>1)))/(skyxsiz-1-(skyxsiz>>1))+g)<<8)+
-					 ((((0x3c-b)*(x-(skyxsiz>>1)))/(skyxsiz-1-(skyxsiz>>1))+b));
-		}
-		y = skyxsiz*skyysiz;
-		for(x=skyxsiz;x<y;x++) p[x] = p[x-skyxsiz];
-	}
-
-		//Initialize look-up table for longitudes
-	if (skylng) free((void *)skylng);
-	if (!(skylng = (point2d *)malloc(skyysiz*8))) return(-1);
-	f = PI*2.0 / ((float)skyysiz);
-	for(y=skyysiz-1;y>=0;y--)
-		fcossin((float)y*f+PI,&skylng[y].x,&skylng[y].y);
-	skylngmul = (float)skyysiz/(PI*2);
-		//This makes those while loops in gline() not lockup when skyysiz==1
-	if (skyysiz == 1) { skylng[0].x = 0; skylng[0].y = 0; }
-
-		//Initialize look-up table for latitudes
-	if (skylat) free((void *)skylat);
-	if (!(skylat = (long *)malloc(skyxsiz*4))) return(-1);
-	f = PI*.5 / ((float)skyxsiz);
-	for(x=skyxsiz-1;x;x--)
-	{
-		ang = (float)((x<<1)-skyxsiz)*f;
-		ftol(cos(ang)*32767.0,&xoff);
-		ftol(sin(ang)*32767.0,&yoff);
-		skylat[x] = (xoff<<16)+((-yoff)&65535);
-	}
-	skylat[0] = 0; //Hack to make sure assembly index never goes < 0
-	skyxsiz--; //Hack for assembly code
-
-	return(0);
 }
 
 void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
@@ -6629,6 +6503,8 @@ static long sxlparspos, sxlparslen;
 long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 {
 	long j, k, m, n;
+
+	printf("loadsxl %s\n", sxlnam);
 
 		//NOTE: MUST buffer file because insertsprite uses kz file code :/
 	if (!kzopen(sxlnam)) return(0);
@@ -10188,8 +10064,6 @@ dpoint3d ipos, istr, ihei, ifor, ivel;
 typedef struct { long f, p, x, y; } tiletype;
 #define FONTXDIM 9
 #define FONTYDIM 12
-tiletype numb[11], asci[128+18]; //Note: 0-31 of asci unused (512 wasted bytes)
-tiletype target;
 long showtarget = 1;
 
 #define MAXSPRITES 1024 //NOTE: this shouldn't be static!
@@ -10309,8 +10183,7 @@ long initmap ()
 		{  //.SXL valid so load sprite info out of .SXL
 
 			if (!loadvxl(vxlnam,&ipos,&istr,&ihei,&ifor))
-				loadnul(&ipos,&istr,&ihei,&ifor);
-			loadsky(skynam);
+				printf("failed to load '%s'\n", vxlnam);
 
 			//parse (global) userst here
 
@@ -10349,15 +10222,16 @@ long initmap ()
 				else if (spr[numsprites].voxnum == kv6[DOOR])
 					{ sscanf(userst,"%d %d",&spr[numsprites].tag,&spr[numsprites].owner); continue; }
 			}
-
-		} else loadnul(&ipos,&istr,&ihei,&ifor);
+		} else
+			printf("failed to load '%s'\n", cursxlnam);
 	}
 	else if ((i >= 4) && ((cursxlnam[i-3] == 'V') || (cursxlnam[i-3] == 'v')))
 	{
 		if (!loadvxl(cursxlnam,&ipos,&istr,&ihei,&ifor))
-			loadnul(&ipos,&istr,&ihei,&ifor);
+			printf("failed to load '%s'\n", cursxlnam);
 	}
-	else loadnul(&ipos,&istr,&ihei,&ifor);
+	else
+		printf("failed to load anything\n");
 
 	if (!numsprites) //.SXL invalid, so generate random sprite positions
 		for(i=0;i<NUMKV6;i++)
@@ -10450,34 +10324,6 @@ long initapp (long argc, char **argv)
 		default:;
 	}
 
-		//Load numbers 0-9 and - into memory
-	kpzload("png/knumb.png",(int *)&numb[0].f,(int *)&numb[0].p,(int *)&numb[0].x,(int *)&numb[0].y);
-	for(i=1;i<11;i++)
-	{
-		numb[i].f = numb[i-1].p*32 + numb[i-1].f;
-		numb[i].p = numb[0].p; numb[i].x = 24; numb[i].y = 32;
-	}
-	numb[0].x = 24; numb[0].y = 32;
-
-		//Load asci (32-127+18) into memory
-	kpzload("png/kasci9x12.png",(int *)&asci[32].f,(int *)&asci[32].p,(int *)&asci[32].x,(int *)&asci[32].y);
-	for(i=33;i<128+18;i++)
-	{
-		asci[i].f = asci[i-1].p*FONTYDIM + asci[i-1].f;
-		asci[i].p = asci[32].p; asci[i].x = FONTXDIM; asci[i].y = FONTYDIM;
-	}
-	asci[32].x = FONTXDIM; asci[32].y = FONTYDIM;
-	for(i=0;i<32;i++) asci[i] = asci[32]; //Fill these in just in case...
-
-		//Load target into memory
-	kpzload("png/target.png",(int *)&target.f,(int *)&target.p,(int *)&target.x,(int *)&target.y);
-	for(k=0;k<target.y;k++) //Reduce alpha...
-		for(j=0;j<target.x;j++)
-		{
-			i = target.f + k*target.p + (j<<2) + 3;
-			*(char *)i = (((*(char *)i)*48)>>8);
-		}
-
 	if (argfilindex >= 0) strcpy(cursxlnam,argv[argfilindex]);
 						  else strcpy(cursxlnam,"vxl/default.sxl");
 	if (initmap() < 0) return(-1);
@@ -10494,8 +10340,6 @@ long initapp (long argc, char **argv)
 void uninitapp ()
 {
 	long i;
-	if (asci[32].f) { free((void *)asci[32].f); asci[32].f = 0; }
-	if (numb[0].f) { free((void *)numb[0].f); numb[0].f = 0; }
 	kzuninit();
 	uninitvoxlap();
 }
@@ -11968,37 +11812,9 @@ int kztell ()
 	return(kzfs.pos);
 }
 
-int kzgetc ()
-{
-	char ch;
-	if (!kzread(&ch,1)) return(-1);
-	return((int)ch);
-}
-
 void kzclose ()
 {
 	if (kzfs.fil) { fclose(kzfs.fil); kzfs.fil = 0; }
 }
 
 //====================== ZIP decompression code ends =========================
-//===================== HANDY PICTURE function begins ========================
-
-void kpzload (const char *filnam, INT_PTR *pic, int *bpl, int *xsiz, int *ysiz)
-{
-	char *buf;
-	int leng;
-
-	(*pic) = 0;
-	if (!kzopen(filnam)) return;
-	leng = kzfilelength();
-	buf = (char *)malloc(leng); if (!buf) { kzclose(); return; }
-	kzread(buf,leng);
-	kzclose();
-
-	kpgetdim(buf,leng,xsiz,ysiz);
-	(*bpl) = ((*xsiz)<<2);
-	(*pic) = (INT_PTR)malloc((*ysiz)*(*bpl)); if (!(*pic)) { free(buf); return; }
-	if (kprender(buf,leng,*pic,*bpl,*xsiz,*ysiz,0,0) < 0) { free(buf); free((void *)*pic); (*pic) = 0; return; }
-	free(buf);
-}
-//====================== HANDY PICTURE function ends =========================
