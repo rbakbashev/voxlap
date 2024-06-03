@@ -13404,91 +13404,14 @@ void doframe ()
 	char tempbuf[260];
 
 	if (!startdirectdraw(&i,&j,&k,&l)) goto skipalldraw;
+
 	voxsetframebuffer(i,j,k,l);
 	setcamera(&ipos,&istr,&ihei,&ifor,xres*.5,yres*.5,xres*.5);
 	setears3d(ipos.x,ipos.y,ipos.z,ifor.x,ifor.y,ifor.z,ihei.x,ihei.y,ihei.z);
 	opticast();
 
-	//for(i=0;i<numsprites;i++) sortorder[i] = i;
-	//for(j=1;j<numsprites;j++)  //SLOW & UGLY SPRITE SORTING... TEMP HACK!!!
-	//   for(i=0;i<j;i++)
-	//      if (spr[sortorder[i]].p.x*ifor.x + spr[sortorder[i]].p.y*ifor.y + spr[sortorder[i]].p.z*ifor.z <
-	//          spr[sortorder[j]].p.x*ifor.x + spr[sortorder[j]].p.y*ifor.y + spr[sortorder[j]].p.z*ifor.z)
-	//         { k = sortorder[i]; sortorder[i] = sortorder[j]; sortorder[j] = k; }
-	//for(l=numsprites-1;l>=0;l--) //NOTE: backwards means front to back order!
-	//{
-	//   i = sortorder[l];
 	for(i=numsprites-1;i>=0;i--)
-	{
-			//Draw the worm's health above its head
-		if ((spr[i].voxnum == kv6[WORM]) && (spr[i].owner > 0))
-		{
-			memcpy(&tempspr,&spr[i],sizeof(spritetype));
-			f = 0.5;
-			tempspr.s.x *= f; tempspr.s.y *= f; tempspr.s.z *= f;
-			tempspr.h.x *= f; tempspr.h.y *= f; tempspr.h.z *= f;
-			tempspr.f.x *= f; tempspr.f.y *= f; tempspr.f.z *= f;
-			f = (float)spr[i].voxnum->zsiz*.6;
-
-			j = spr[i].owner;
-
-			if (j >= 100) k = -10; else if (j >= 10) k = -5; else k = 0;
-			tempspr.p.x = spr[i].p.x - spr[i].f.x*f + spr[i].h.x*10 + spr[i].s.x*k;
-			tempspr.p.y = spr[i].p.y - spr[i].f.y*f + spr[i].h.y*10 + spr[i].s.y*k;
-			tempspr.p.z = spr[i].p.z - spr[i].f.z*f + spr[i].h.z*10 + spr[i].s.z*k;
-
-			if (j >= 100)
-			{
-				tempspr.voxnum = kv6[NUM0+(j/100)]; drawsprite(&tempspr);
-				tempspr.p.x += spr[i].s.x*10;
-				tempspr.p.y += spr[i].s.y*10;
-				tempspr.p.z += spr[i].s.z*10;
-			}
-			if (j >= 10)
-			{
-				tempspr.voxnum = kv6[NUM0+((j/10)%10)]; drawsprite(&tempspr);
-				tempspr.p.x += spr[i].s.x*10;
-				tempspr.p.y += spr[i].s.y*10;
-				tempspr.p.z += spr[i].s.z*10;
-			}
-			tempspr.voxnum = kv6[NUM0+(j%10)]; drawsprite(&tempspr);
-		}
-		else if (spr[i].voxnum == kv6[CACO])
-		{
-			for(j=-1;j<=1;j+=2) //Draw oscillating legs under CACO :)
-			{
-				memcpy(&tempspr,&spr[i],sizeof(spritetype));
-				f = 2.0;
-				tempspr.s.x *= f; tempspr.s.y *= f; tempspr.s.z *= f;
-				tempspr.h.x *= f; tempspr.h.y *= f; tempspr.h.z *= f;
-				tempspr.f.x *= f; tempspr.f.y *= f; tempspr.f.z *= f;
-
-				if (spr[i].v.x*spr[i].v.x + spr[i].v.y*spr[i].v.y + spr[i].v.z*spr[i].v.z > 1*1)
-					f = sin(dtotclk*6)*(float)j*.5;
-				else
-					f = 0;
-
-				orthorotate(PI*1.5,f,0,&tempspr.s,&tempspr.h,&tempspr.f);
-				tempspr.p.x = spr[i].p.x + spr[i].s.x*10*(float)j + spr[i].f.x*24;
-				tempspr.p.y = spr[i].p.y + spr[i].s.y*10*(float)j + spr[i].f.y*24;
-				tempspr.p.z = spr[i].p.z + spr[i].s.z*10*(float)j + spr[i].f.z*24;
-				tempspr.voxnum = kv6[NUM1]; drawsprite(&tempspr);
-			}
-		}
-
-		if (spr[i].flags&2)
-		{
-			if (keystatus[0x29]) //` (Change ANASPLIT animation...)
-			{
-				keystatus[0x29] = 0;
-				spr[i].okfatim = spr[i].kfatim;
-				if (spr[i].kfatim < 2000) spr[i].kfatim = 2000;
-											else spr[i].kfatim = 0;
-			}
-			animsprite(&spr[i],fsynctics*1000.0);
-		}
 		drawsprite(&spr[i]);
-	}
 
 	for(i=dbritail;i!=dbrihead;i=((i+1)&(MAXDBRI-1)))
 		drawspherefill(dbri[i].p.x,dbri[i].p.y,dbri[i].p.z,(float)(totclk-dbri[i].tim)*.0004-1,dbri[i].col);
@@ -14767,25 +14690,6 @@ skipalldraw:;
 	if ((keystatus[0x15]) && (totclk < quitmessagetimeout) &&
 		(!strcmp(message,"Press Y to quit!"))) quitloop(); //'Y'
 }
-
-#if 0
-//Example of how to use drawpicinquad (this code makes screen fall over)
-	static long pic[256*192];
-	static float ang = 0;
-	clearscreen(0);
-	startdirectdraw(&frameptr,&pitch,&xdim,&ydim);
-	voxsetframebuffer((long)pic,256*4,256,192);
-	setcamera(&ipos,&istr,&ihei,&ifor,256*.5,192*.5,256*.5);
-	opticast();
-	float rx = 256*.5;
-	float ry = 192*.5 - 192*cos(ang);
-	float rz = 256*.5 + 192*sin(ang);
-	drawpicinquad((long)pic,256*4,256,192,frameptr,pitch,xdim,ydim,
-		xdim*.5-rx*xdim*.5/rz,ydim*.5+ry*xdim*.5/rz,
-		xdim*.5+rx*xdim*.5/rz,ydim*.5+ry*xdim*.5/rz,xdim,ydim,0,ydim);
-	//ang -= .02; if (ang < -0.75) ang = 0;
-	ang += .02; if (ang >= 2.35) ang = -.75;
-#endif
 
 /// ------- KPLIB code begins
 
