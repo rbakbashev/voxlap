@@ -5952,28 +5952,8 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 							{
 								zz = (long)tbuf[oldn+2];
 
-								_asm //*(long *)&tbuf[n] = mixc[zz][rand()%mixn[zz]];
-								{    //mixn[zz] = 0;
-									mov eax, zz
-									mov ecx, mixn[eax*4]
-									mov mixn[eax*4], 0
-									shl eax, 5
-									pxor mm0, mm0
-									movq mm2, qmulmip[ecx*8-8]
-									pcmpeqb mm6, mm6
-									movq mm7, mm0
-					 vxlmipbeg0:movd mm1, mixc[eax+ecx*4-4]
-									punpcklbw mm1, mm7
-									paddw mm0, mm1
-									dec ecx
-									jnz short vxlmipbeg0
-									paddw mm0, mm0
-									psubw mm0, mm6 ;rounding bias
-									pmulhw mm0, mm2
-									packuswb mm0, mm0
-									mov eax, n
-									movd tbuf[eax], mm0
-								}
+								*(long *)&tbuf[n] = mixc[zz][rand()%mixn[zz]];
+								mixn[zz] = 0;
 
 								tbuf[oldn+2]++; n += 4;
 							}
@@ -5993,28 +5973,8 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 							}
 							while ((cz<<1) < z)
 							{
-								_asm //*(long *)&tbuf[n] = mixc[cz][rand()%mixn[cz]];
-								{    //mixn[cz] = 0;
-									mov eax, cz
-									mov ecx, mixn[eax*4]
-									mov mixn[eax*4], 0
-									shl eax, 5
-									pxor mm0, mm0
-									movq mm2, qmulmip[ecx*8-8]
-									pcmpeqb mm6, mm6
-									movq mm7, mm0
-					 vxlmipbeg1:movd mm1, mixc[eax+ecx*4-4]
-									punpcklbw mm1, mm7
-									paddw mm0, mm1
-									dec ecx
-									jnz short vxlmipbeg1
-									paddw mm0, mm0
-									psubw mm0, mm6 ;rounding bias
-									pmulhw mm0, mm2
-									packuswb mm0, mm0
-									mov eax, n
-									movd tbuf[eax], mm0
-								}
+								*(long *)&tbuf[n] = mixc[cz][rand()%mixn[cz]];
+								mixn[cz] = 0;
 
 								cz++; n += 4;
 							}
