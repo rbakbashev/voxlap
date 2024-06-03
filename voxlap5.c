@@ -168,9 +168,6 @@ extern void uninitvoxlap ();
 extern long loadsxl (const char *, char **, char **, char **);
 extern char *parspr (vx5sprite *, char **);
 extern void loadnul (dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
-extern long loaddta (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
-extern long loadpng (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
-extern void loadbsp (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 extern long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 extern long savevxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 extern long loadsky (const char *);
@@ -287,19 +284,13 @@ extern int kpgetdim (const char *, int, int *, int *);
 extern int kprender (const char *, int, int, int, int, int, int, int);
 
 	//ZIP functions:
-extern int kzaddstack (const char *);
 extern void kzuninit ();
 extern int kzopen (const char *);
 extern int kzread (void *, int);
 extern int kzfilelength ();
-extern int kzseek (int, int);
 extern int kztell ();
 extern int kzgetc ();
-extern int kzeof ();
 extern void kzclose ();
-
-extern void kzfindfilestart (const char *); //pass wildcard string
-extern int kzfindfile (char *); //you alloc buf, returns 1:found,0:~found
 
 #include "sysmain.h"
 
@@ -4948,191 +4939,6 @@ void loadnul (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
 }
 
-long loaddta (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
-{
-	long i, j, p, leng, minz = 255, maxz = 0, h[5], longpal[256];
-	char dat, *dtahei, *dtacol, *v, dafilename[MAX_PATH];
-	float f;
-	FILE *fp;
-
-	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
-	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
-
-	if (VSID != 1024) return(0);
-	v = (char *)(&vbuf[1]); //1st dword for voxalloc compare logic optimization
-
-	strcpy(dafilename,filename);
-
-	dtahei = (char *)(&vbuf[(VOXSIZ-2097152)>>2]);
-	dtacol = (char *)(&vbuf[(VOXSIZ-1048576)>>2]);
-
-	dafilename[0] = 'd';
-	if (!kzopen(dafilename)) return(0);
-	kzseek(128,SEEK_SET); p = 0;
-	while (p < 1024*1024)
-	{
-		dat = kzgetc();
-		if (dat >= 192) { leng = dat-192; dat = kzgetc(); }
-					  else { leng = 1; }
-		dat = 255-dat;
-		if (dat < minz) minz = dat;
-		if (dat > maxz) maxz = dat;
-		while (leng-- > 0) dtahei[p++] = dat;
-	}
-	kzclose();
-
-	dafilename[0] = 'c';
-	if (!kzopen(dafilename)) return(0);
-	kzseek(128,SEEK_SET);
-	p = 0;
-	while (p < 1024*1024)
-	{
-		dat = kzgetc();
-		if (dat >= 192) { leng = dat-192; dat = kzgetc(); }
-					  else { leng = 1; }
-		while (leng-- > 0) dtacol[p++] = dat;
-	}
-
-	dat = kzgetc();
-	if (dat == 0xc)
-		for(i=0;i<256;i++)
-		{
-			longpal[i] = kzgetc();
-			longpal[i] = (longpal[i]<<8)+kzgetc();
-			longpal[i] = (longpal[i]<<8)+kzgetc() + 0x80000000;
-		}
-
-	kzclose();
-
-		//Fill board data
-	minz = lbound(128-((minz+maxz)>>1),-minz,255-maxz);
-	for(p=0;p<1024*1024;p++)
-	{
-		h[0] = (long)dtahei[p];
-		h[1] = (long)dtahei[((p-1)&0x3ff)+((p     )&0xffc00)];
-		h[2] = (long)dtahei[((p+1)&0x3ff)+((p     )&0xffc00)];
-		h[3] = (long)dtahei[((p  )&0x3ff)+((p-1024)&0xffc00)];
-		h[4] = (long)dtahei[((p  )&0x3ff)+((p+1024)&0xffc00)];
-
-		j = 1;
-		for(i=4;i>0;i--) if (h[i]-h[0] > j) j = h[i]-h[0];
-
-		sptr[p] = v;
-		v[0] = 0;
-		v[1] = dtahei[p]+minz;
-		v[2] = dtahei[p]+minz+j-1;
-		v[3] = 0; //dummy (z top)
-		v += 4;
-		for(;j;j--) { *(long *)v = colorjit(longpal[dtacol[p]],0x70707); v += 4; }
-	}
-
-	memset(&sptr[VSID*VSID],0,sizeof(sptr)-VSID*VSID*4);
-	vbiti = (((long)v-(long)vbuf)>>2); //# vbuf longs/vbit bits allocated
-	clearbuf((void *)vbit,vbiti>>5,-1);
-	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
-	vbit[vbiti>>5] = (1<<vbiti)-1;
-
-	vx5.globalmass = calcglobalmass();
-
-	ipo->x = VSID*.5; ipo->y = VSID*.5; ipo->z = 128;
-	f = 0.0*PI/180.0;
-	ist->x = cos(f); ist->y = sin(f); ist->z = 0;
-	ihe->x = 0; ihe->y = 0; ihe->z = 1;
-	ifo->x = sin(f); ifo->y = -cos(f); ifo->z = 0;
-
-	gmipnum = 1; vx5.flstnum = 0;
-	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
-	return(1);
-}
-
-long loadpng (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
-{
-	unsigned long *pngdat, dat[5];
-	long i, j, k, l, p, leng, minz = 255, maxz = 0;
-	char *v, *buf;
-	float f;
-	FILE *fp;
-
-	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
-	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
-
-	if (VSID != 1024) return(0);
-	v = (char *)(&vbuf[1]); //1st dword for voxalloc compare logic optimization
-
-	if (!kzopen(filename)) return(0);
-	leng = kzfilelength();
-	buf = (char *)malloc(leng); if (!buf) { kzclose(); return(0); }
-	kzread(buf,leng);
-	kzclose();
-
-	kpgetdim(buf,leng,(int *)&i,(int *)&j); if ((i != VSID) && (j != VSID)) { free(buf); return(0); }
-	pngdat = (unsigned long *)(&vbuf[(VOXSIZ-VSID*VSID*4)>>2]);
-	if (kprender(buf,leng,(long)pngdat,VSID<<2,VSID,VSID,0,0) < 0) return(0);
-	free(buf);
-
-	for(i=0;i<VSID*VSID;i++)
-	{
-		if ((pngdat[i]>>24) < minz) minz = (pngdat[i]>>24);
-		if ((pngdat[i]>>24) > maxz) maxz = (pngdat[i]>>24);
-	}
-
-		//Fill board data
-	minz = lbound(128-((minz+maxz)>>1),-minz,255-maxz);
-	for(p=0;p<VSID*VSID;p++)
-	{
-		dat[0] = pngdat[p];
-		dat[1] = pngdat[((p-1)&(VSID-1))+((p     )&((VSID-1)*VSID))];
-		dat[2] = pngdat[((p+1)&(VSID-1))+((p     )&((VSID-1)*VSID))];
-		dat[3] = pngdat[((p  )&(VSID-1))+((p-VSID)&((VSID-1)*VSID))];
-		dat[4] = pngdat[((p  )&(VSID-1))+((p+VSID)&((VSID-1)*VSID))];
-
-		j = 1; l = dat[0];
-		for(i=4;i>0;i--)
-			if (((signed long)((dat[i]>>24)-(dat[0]>>24))) > j)
-				{ j = (dat[i]>>24)-(dat[0]>>24); l = dat[i]; }
-
-		sptr[p] = v;
-		v[0] = 0;
-		v[1] = (pngdat[p]>>24)+minz;
-		v[2] = (pngdat[p]>>24)+minz+j-1;
-		v[3] = 0; //dummy (z top)
-		v += 4;
-		k = (pngdat[p]&0xffffff)|0x80000000;
-		if (j == 2)
-		{
-			l = (((  l     &255)-( k     &255))>>1)      +
-				 (((((l>> 8)&255)-((k>> 8)&255))>>1)<< 8) +
-				 (((((l>>16)&255)-((k>>16)&255))>>1)<<16);
-		}
-		else if (j > 2)
-		{
-			l = (((  l     &255)-( k     &255))/j)      +
-				 (((((l>> 8)&255)-((k>> 8)&255))/j)<< 8) +
-				 (((((l>>16)&255)-((k>>16)&255))/j)<<16);
-		}
-		*(long *)v = k; v += 4; j--;
-		while (j) { k += l; *(long *)v = colorjit(k,0x30303); v += 4; j--; }
-	}
-
-	memset(&sptr[VSID*VSID],0,sizeof(sptr)-VSID*VSID*4);
-	vbiti = (((long)v-(long)vbuf)>>2); //# vbuf longs/vbit bits allocated
-	clearbuf((void *)vbit,vbiti>>5,-1);
-	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
-	vbit[vbiti>>5] = (1<<vbiti)-1;
-
-	vx5.globalmass = calcglobalmass();
-
-	ipo->x = VSID*.5; ipo->y = VSID*.5; ipo->z = 128;
-	f = 0.0*PI/180.0;
-	ist->x = cos(f); ist->y = sin(f); ist->z = 0;
-	ihe->x = 0; ihe->y = 0; ihe->z = 1;
-	ifo->x = sin(f); ifo->y = -cos(f); ifo->z = 0;
-
-	gmipnum = 1; vx5.flstnum = 0;
-	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
-	return(1);
-}
-
 
 //Quake3 .BSP loading code begins --------------------------------------------
 typedef struct { long c, i; float z, z1; } vlinerectyp;
@@ -5181,108 +4987,6 @@ long vlinebsp (float x, float y, float z0, float z1, float *dvz)
 void delslab(long *b2, long y0, long y1);
 long *scum2(long x, long y);
 void scum2finish();
-
-void loadbsp (const char *filnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
-{
-	FILE *fp;
-	dpoint3d dp;
-	float f, xof, yof, zof, sc, rsc;
-	long numplanes, numnodes, numleafs, fpos[17], flng[17];
-	long i, x, y, z, z0, z1, vcnt, *lptr, minx, miny, minz, maxx, maxy, maxz;
-	char *v;
-
-	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
-	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
-
-		//Completely re-compile vbuf
-	v = (char *)(&vbuf[1]); //1st dword for voxalloc compare logic optimization
-	for(x=0;x<VSID;x++)
-		for(y=0;y<VSID;y++)
-		{
-			sptr[y*VSID+x] = v; v[0] = 0; v[1] = 0; v[2] = 0; v[3] = 0; v += 4;
-			(*(long *)v) = ((x^y)&15)*0x10101+0x807c7c7c; v += 4;
-		}
-
-	memset(&sptr[VSID*VSID],0,sizeof(sptr)-VSID*VSID*4);
-	vbiti = (((long)v-(long)vbuf)>>2); //# vbuf longs/vbit bits allocated
-	clearbuf((void *)vbit,vbiti>>5,-1);
-	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
-	vbit[vbiti>>5] = (1<<vbiti)-1;
-
-	if (!kzopen(filnam)) return;
-	kzread(&i,4); if (i != 0x50534249) { kzclose(); return; }
-	kzread(&i,4); if (i != 0x2e) { kzclose(); return; }
-	for(i=0;i<17;i++) { kzread(&fpos[i],4); kzread(&flng[i],4); }
-	kzseek(fpos[2],SEEK_SET); numplanes = flng[2]/16;
-	for(i=0;i<numplanes;i++) { kzread(&q3pln[i].x,12); kzread(&q3pld[i],4); }
-	kzseek(fpos[3],SEEK_SET); numnodes = flng[3]/36;
-	minx = 0x7fffffff; miny = 0x7fffffff; minz = 0x7fffffff;
-	maxx = 0x80000000; maxy = 0x80000000; maxz = 0x80000000;
-	for(i=0;i<numnodes;i++)
-	{
-		kzread(&q3nod[i][0],12);
-		kzread(&x,4); if (x < minx) minx = x;
-		kzread(&x,4); if (x < miny) miny = x;
-		kzread(&x,4); if (x < minz) minz = x;
-		kzread(&x,4); if (x > maxx) maxx = x;
-		kzread(&x,4); if (x > maxy) maxy = x;
-		kzread(&x,4); if (x > maxz) maxz = x;
-	}
-	kzseek(fpos[4]+4,SEEK_SET); numleafs = flng[4]/48;
-	for(i=0;i<numleafs;i++) { kzread(&q3lf[i],4); kzseek(44,SEEK_CUR); }
-	kzclose();
-
-	sc = (float)(VSID-2)/(float)(maxx-minx);
-	rsc = (float)(VSID-2)/(float)(maxy-miny); if (rsc < sc) sc = rsc;
-	rsc = (float)(MAXZDIM-2)/(float)(maxz-minz); if (rsc < sc) sc = rsc;
-	//i = *(long *)sc; i &= 0xff800000; sc = *(float *)i;
-	xof = (-(float)(minx+maxx)*sc + VSID   )*.5;
-	yof = (+(float)(miny+maxy)*sc + VSID   )*.5;
-	zof = (+(float)(minz+maxz)*sc + MAXZDIM)*.5;
-
-	rsc = 1.0 / sc;
-	vx5.colfunc = curcolfunc; //0<x0<x1<VSID, 0<y0<y1<VSID, 0<z0<z1<256,
-	for(y=0;y<VSID;y++)
-		for(x=0;x<VSID;x++)
-		{
-			lptr = scum2(x,y);
-
-				//voxx = q3x*+sc + xof;
-				//voxy = q3y*-sc + yof;
-				//voxz = q3z*-sc + zof;
-			vcnt = vlinebsp(((float)x-xof)*rsc,((float)y-yof)*-rsc,-65536.0,65536.0,q3vz);
-			for(i=vcnt-2;i>0;i-=2)
-			{
-				ftol(-q3vz[i+1]*sc+zof,&z0); if (z0 < 0) z0 = 0;
-				ftol(-q3vz[i  ]*sc+zof,&z1); if (z1 > MAXZDIM) z1 = MAXZDIM;
-				delslab(lptr,z0,z1);
-			}
-		}
-	scum2finish();
-
-	vx5.globalmass = calcglobalmass();
-
-		//Find a spot that isn't too close to a wall
-	sc = -1; ipo->x = VSID*.5; ipo->y = VSID*.5; ipo->z = -16;
-	for(i=4096;i>=0;i--)
-	{
-		x = (rand()%VSID); y = (rand()%VSID); z = (rand()%MAXZDIM);
-		if (!isvoxelsolid(x,y,z))
-		{
-			rsc = findmaxcr((double)x+.5,(double)y+.5,(double)z+.5,5.0);
-			if (rsc <= sc) continue;
-			ipo->x = (double)x+.5; ipo->y = (double)x+.5; ipo->z = (double)x+.5;
-			sc = rsc; if (sc >= 5.0) break;
-		}
-	}
-	f = 0.0*PI/180.0;
-	ist->x = cos(f); ist->y = sin(f); ist->z = 0;
-	ihe->x = 0; ihe->y = 0; ihe->z = 1;
-	ifo->x = sin(f); ifo->y = -cos(f); ifo->z = 0;
-
-	gmipnum = 1; vx5.flstnum = 0;
-	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
-}
 
 //Quake3 .BSP loading code ends ----------------------------------------------
 
@@ -13483,8 +13187,6 @@ long initapp (long argc, char **argv)
 		default:;
 	}
 
-	kzaddstack("voxdata.zip");
-
 		//Load numbers 0-9 and - into memory
 	kpzload("png/knumb.png",(int *)&numb[0].f,(int *)&numb[0].p,(int *)&numb[0].x,(int *)&numb[0].y);
 	for(i=1;i<11;i++)
@@ -17804,25 +17506,6 @@ static int filnamcmp (const char *st0, const char *st1)
 static char *kzhashbuf = 0;
 static int kzhashead[256], kzhashpos, kzlastfnam, kzhashsiz, kzdirnamhead = -1;
 
-static int kzcheckhashsiz (int siz)
-{
-	int i;
-
-	if (!kzhashbuf) //Initialize hash table on first call
-	{
-		memset(kzhashead,-1,sizeof(kzhashead));
-		kzhashbuf = (char *)malloc(KZHASHINITSIZE); if (!kzhashbuf) return(0);
-		kzhashpos = 0; kzlastfnam = -1; kzhashsiz = KZHASHINITSIZE; kzdirnamhead = -1;
-	}
-	if (kzhashpos+siz > kzhashsiz) //Make sure string fits in kzhashbuf
-	{
-		i = kzhashsiz; do { i <<= 1; } while (kzhashpos+siz > i);
-		kzhashbuf = (char *)realloc(kzhashbuf,i); if (!kzhashbuf) return(0);
-		kzhashsiz = i;
-	}
-	return(1);
-}
-
 static int kzcalchash (const char *st)
 {
 	int i, hashind;
@@ -17860,158 +17543,6 @@ void kzuninit ()
 {
 	if (kzhashbuf) { free(kzhashbuf); kzhashbuf = 0; }
 	kzhashpos = kzhashsiz = 0; kzdirnamhead = -1;
-}
-
-	//If file found, loads internal directory from ZIP/GRP into memory (hash) to allow faster access later
-	//If file not found, assumes it's a directory and adds it to an internal list
-int kzaddstack (const char *filnam)
-{
-	FILE *fil;
-	int i, j, k, leng, hashind, zipnamoffs, numfiles;
-	char tempbuf[260+46];
-
-	fil = fopen(filnam,"rb");
-	if (!fil) //if file not found, assume it's a directory
-	{
-			//Add directory name to internal list (using kzhashbuf for convenience of dynamic allocation)
-		i = strlen(filnam)+5; if (!kzcheckhashsiz(i)) return(-1);
-		*(int *)&kzhashbuf[kzhashpos] = kzdirnamhead; kzdirnamhead = kzhashpos;
-		strcpy(&kzhashbuf[kzhashpos+4],filnam);
-		kzhashpos += i;
-
-		return(-1);
-	}
-
-		//Write ZIP/GRP/EXE filename to hash
-	i = strlen(filnam)+1; if (!kzcheckhashsiz(i)) { fclose(fil); return(-1); }
-	strcpy(&kzhashbuf[kzhashpos],filnam);
-	zipnamoffs = kzhashpos; kzhashpos += i;
-
-	fread(&i,4,1,fil);
-	if (i == LSWAPIB(0x04034b50)) //'PK\3\4' is ZIP file id
-	{
-		fseek(fil,-22,SEEK_END);
-		fread(tempbuf,22,1,fil);
-		if (*(int *)&tempbuf[0] == LSWAPIB(0x06054b50)) //Fast way of finding dir info
-		{
-			numfiles = SSWAPIB(*(short *)&tempbuf[10]);
-			fseek(fil,LSWAPIB(*(int *)&tempbuf[16]),SEEK_SET);
-		}
-		else //Slow way of finding dir info (used when ZIP has junk at end)
-		{
-			fseek(fil,0,SEEK_SET); numfiles = 0;
-			while (1)
-			{
-				if (!fread(&j,4,1,fil)) { numfiles = -1; break; }
-				if (j == LSWAPIB(0x02014b50)) break; //Found central file header :)
-				if (j != LSWAPIB(0x04034b50)) { numfiles = -1; break; }
-				fread(tempbuf,26,1,fil);
-				fseek(fil,LSWAPIB(*(int *)&tempbuf[14]) + SSWAPIB(*(short *)&tempbuf[24]) + SSWAPIB(*(short *)&tempbuf[22]),SEEK_CUR);
-				numfiles++;
-			}
-			if (numfiles < 0) { fclose(fil); return(-1); }
-			fseek(fil,-4,SEEK_CUR);
-		}
-		for(i=0;i<numfiles;i++)
-		{
-			fread(tempbuf,46,1,fil);
-			if (*(int *)&tempbuf[0] != LSWAPIB(0x02014b50)) { fclose(fil); return(0); }
-
-			j = SSWAPIB(*(short *)&tempbuf[28]); //filename length
-			fread(&tempbuf[46],j,1,fil);
-			tempbuf[j+46] = 0;
-
-				//Write information into hash
-			j = strlen(&tempbuf[46])+22; if (!kzcheckhashsiz(j)) { fclose(fil); return(-1); }
-			hashind = kzcalchash(&tempbuf[46]);
-			*(int *)&kzhashbuf[kzhashpos] = kzhashead[hashind];
-			*(int *)&kzhashbuf[kzhashpos+4] = kzlastfnam;
-			*(int *)&kzhashbuf[kzhashpos+8] = zipnamoffs;
-			*(int *)&kzhashbuf[kzhashpos+12] = LSWAPIB(*(int *)&tempbuf[42]); //fileoffs
-			*(int *)&kzhashbuf[kzhashpos+16] = 0; //fileleng not used for ZIPs (reserve space for simplicity)
-			*(int *)&kzhashbuf[kzhashpos+20] = 1; //iscomp
-			strcpy(&kzhashbuf[kzhashpos+21],&tempbuf[46]);
-			kzhashead[hashind] = kzhashpos; kzlastfnam = kzhashpos; kzhashpos += j;
-
-			j  = SSWAPIB(*(short *)&tempbuf[30]); //extra field length
-			j += SSWAPIB(*(short *)&tempbuf[32]); //file comment length
-			fseek(fil,j,SEEK_CUR);
-		}
-	}
-	else if (i == LSWAPIB(0x536e654b)) //'KenS' is GRP file id
-	{
-		fread(tempbuf,12,1,fil);
-		if ((*(int *)&tempbuf[0] != LSWAPIB(0x65766c69)) || //'ilve'
-				(*(int *)&tempbuf[4] != LSWAPIB(0x6e616d72)))   //'rman'
-			 { fclose(fil); return(0); }
-		numfiles = LSWAPIB(*(int *)&tempbuf[8]); k = ((numfiles+1)<<4);
-		for(i=0;i<numfiles;i++,k+=leng)
-		{
-			fread(tempbuf,16,1,fil);
-			leng = LSWAPIB(*(int *)&tempbuf[12]); //File length
-			tempbuf[12] = 0;
-
-				//Write information into hash
-			j = strlen(tempbuf)+22; if (!kzcheckhashsiz(j)) { fclose(fil); return(-1); }
-			hashind = kzcalchash(tempbuf);
-			*(int *)&kzhashbuf[kzhashpos] = kzhashead[hashind];
-			*(int *)&kzhashbuf[kzhashpos+4] = kzlastfnam;
-			*(int *)&kzhashbuf[kzhashpos+8] = zipnamoffs;
-			*(int *)&kzhashbuf[kzhashpos+12] = k; //fileoffs
-			*(int *)&kzhashbuf[kzhashpos+16] = leng; //fileleng
-			*(int *)&kzhashbuf[kzhashpos+20] = 0; //iscomp
-			strcpy(&kzhashbuf[kzhashpos+21],tempbuf);
-			kzhashead[hashind] = kzhashpos; kzlastfnam = kzhashpos; kzhashpos += j;
-		}
-	}
-	else if ((i&0xffff) == SSWAPIB(0x5a4d)) //'MZ' is EXE file id (EXE with custom data format appended to end)
-	{
-		int appendeddatastart, offs, fileng;
-		unsigned short s, numheads;
-
-			//Get original EXE size (see: http://www.rhinocerus.net/forum/lang-asm-x86/256686-appending-data-exe-file.html)
-		fseek(fil,60,SEEK_SET); fread(&offs,4,1,fil); offs = LSWAPIB(offs); fseek(fil,offs,SEEK_SET);
-		fread(&i,4,1,fil); if (i != LSWAPIB(0x00004550)) { fclose(fil); return(0); } //PE
-		fread(&s,2,1,fil); //dummy
-		fread(&numheads,2,1,fil); numheads = SSWAPIB(numheads);
-		appendeddatastart = 0;
-		fseek(fil,256,SEEK_CUR);
-
-		for(;numheads>0;numheads--) //walk headers
-		{
-			fread(&i,4,1,fil); i = LSWAPIB(i); //offs
-			fread(&j,4,1,fil); j = LSWAPIB(j); //leng
-			if (i+j > appendeddatastart) appendeddatastart = i+j;
-			fseek(fil,32,SEEK_CUR);
-		}
-
-		fseek(fil,appendeddatastart,SEEK_SET);
-		if (fread(&numfiles,1,4,fil) != 4) { fclose(fil); return(-1); } //no appended data
-		numfiles = LSWAPIB(numfiles);
-		for(i=numfiles;i>0;i--) { while (fgetc(fil) > 0); fseek(fil,4,SEEK_CUR); } //Get file list size
-
-		offs = ftell(fil);
-		fseek(fil,appendeddatastart+4,SEEK_SET);
-		for(i=0;i<numfiles;i++,offs+=leng)
-		{
-			j = 0; do { k = fgetc(fil); tempbuf[j] = k; j++; } while (k > 0);
-			fread(&leng,1,4,fil);
-
-				//Write information into hash
-			j = strlen(tempbuf)+22; if (!kzcheckhashsiz(j)) { fclose(fil); return(-1); }
-			hashind = kzcalchash(tempbuf);
-			*(int *)&kzhashbuf[kzhashpos] = kzhashead[hashind];
-			*(int *)&kzhashbuf[kzhashpos+4] = kzlastfnam;
-			*(int *)&kzhashbuf[kzhashpos+8] = zipnamoffs;
-			*(int *)&kzhashbuf[kzhashpos+12] = offs; //fileoffs
-			*(int *)&kzhashbuf[kzhashpos+16] = leng; //fileleng
-			*(int *)&kzhashbuf[kzhashpos+20] = 0; //iscomp
-			strcpy(&kzhashbuf[kzhashpos+21],tempbuf);
-			kzhashead[hashind] = kzhashpos; kzlastfnam = kzhashpos; kzhashpos += j;
-		}
-	}
-	fclose(fil);
-	return(0);
 }
 
   //this allows the use of kplib.c with a file that is already open
@@ -18114,175 +17645,6 @@ INT_PTR kzopen (const char *filnam)
 
 	return(0);
 }
-
-// --------------------------------------------------------------------------
-
-#if defined(__DOS__)
-#define MAX_PATH 260
-static struct find_t findata;
-#elif defined(_WIN32)
-static HANDLE hfind = INVALID_HANDLE_VALUE;
-static WIN32_FIND_DATA findata;
-#else
-#define MAX_PATH 260
-static DIR *hfind = NULL;
-static struct dirent *findata = NULL;
-#endif
-
-	//File find state variables. Example sequence (read top->bot, left->right):
-	//   srchstat   srchzoff    srchdoff
-	//   0,1,2,3
-	//              500,200,-1
-	//           4              300
-	//   0,1,2,3,4              100
-	//   0,1,2,3,4              -1
-static int srchstat = -1, srchzoff = 0, srchdoff = -1, wildstpathleng;
-static char wildst[MAX_PATH] = "", newildst[MAX_PATH] = "";
-
-void kzfindfilestart (const char *st)
-{
-#if defined(__DOS__)
-#elif defined(_WIN32)
-	if (hfind != INVALID_HANDLE_VALUE)
-		{ FindClose(hfind); hfind = INVALID_HANDLE_VALUE; }
-#else
-	if (hfind) { closedir(hfind); hfind = NULL; }
-#endif
-	strcpy(wildst,st); strcpy(newildst,st);
-	srchstat = 0; srchzoff = kzlastfnam; srchdoff = kzdirnamhead;
-}
-
-int kzfindfile (char *filnam)
-{
-	int i;
-
-kzfindfile_beg:;
-	filnam[0] = 0;
-	if (srchstat == 0)
-	{
-		if (!newildst[0]) { srchstat = -1; return(0); }
-		do
-		{
-			srchstat = 1;
-
-				//Extract directory from wildcard string for pre-pending
-			wildstpathleng = 0;
-			for(i=0;newildst[i];i++)
-				if ((newildst[i] == '/') || (newildst[i] == '\\'))
-					wildstpathleng = i+1;
-
-			memcpy(filnam,newildst,wildstpathleng);
-
-#if defined(__DOS__)
-			if (_dos_findfirst(newildst,_A_SUBDIR,&findata))
-				{ if (!kzhashbuf) return(0); srchstat = 2; continue; }
-			i = wildstpathleng;
-			if (findata.attrib&16)
-				if ((findata.name[0] == '.') && (!findata.name[1])) continue;
-			strcpy(&filnam[i],findata.name);
-			if (findata.attrib&16) strcat(&filnam[i],"\\");
-#elif defined(_WIN32)
-			hfind = FindFirstFile(newildst,&findata);
-			if (hfind == INVALID_HANDLE_VALUE)
-				{ if (!kzhashbuf) return(0); srchstat = 2; continue; }
-			if (findata.dwFileAttributes&FILE_ATTRIBUTE_HIDDEN) continue;
-			i = wildstpathleng;
-			if (findata.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)
-				if ((findata.cFileName[0] == '.') && (!findata.cFileName[1])) continue;
-			strcpy(&filnam[i],findata.cFileName);
-			if (findata.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) strcat(&filnam[i],"\\");
-#else
-			if (!hfind)
-			{
-				char *s = (char *)".";
-				if (wildstpathleng > 0) {
-					filnam[wildstpathleng] = 0;
-					s = filnam;
-				}
-				hfind = opendir(s);
-				if (!hfind) { if (!kzhashbuf) return 0; srchstat = 2; continue; }
-			}
-			break;   // process srchstat == 1
-#endif
-			return(1);
-		} while (0);
-	}
-	if (srchstat == 1)
-	{
-		while (1)
-		{
-			memcpy(filnam,newildst,wildstpathleng);
-#if defined(__DOS__)
-			if (_dos_findnext(&findata))
-				{ if (!kzhashbuf) return(0); srchstat = 2; break; }
-			i = wildstpathleng;
-			if (findata.attrib&16)
-				if ((findata.name[0] == '.') && (!findata.name[1])) continue;
-			strcpy(&filnam[i],findata.name);
-			if (findata.attrib&16) strcat(&filnam[i],"\\");
-#elif defined(_WIN32)
-			if (!FindNextFile(hfind,&findata))
-				{ FindClose(hfind); hfind = INVALID_HANDLE_VALUE; if (!kzhashbuf) return(0); srchstat = 2; break; }
-			if (findata.dwFileAttributes&FILE_ATTRIBUTE_HIDDEN) continue;
-			i = wildstpathleng;
-			if (findata.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)
-				if ((findata.cFileName[0] == '.') && (!findata.cFileName[1])) continue;
-			strcpy(&filnam[i],findata.cFileName);
-			if (findata.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) strcat(&filnam[i],"\\");
-#else
-			if ((findata = readdir(hfind)) == NULL)
-				{ closedir(hfind); hfind = NULL; if (!kzhashbuf) return 0; srchstat = 2; break; }
-			i = wildstpathleng;
-			if (findata->d_type == DT_DIR)
-				{ if (findata->d_name[0] == '.' && !findata->d_name[1]) continue; } //skip .
-			else if ((findata->d_type == DT_REG) || (findata->d_type == DT_LNK))
-				{ if (findata->d_name[0] == '.') continue; } //skip hidden (dot) files
-			else continue; //skip devices and fifos and such
-			if (!wildmatch(findata->d_name,&newildst[wildstpathleng])) continue;
-			strcpy(&filnam[i],findata->d_name);
-			if (findata->d_type == DT_DIR) strcat(&filnam[i],"/");
-#endif
-			return(1);
-		}
-	}
-	while (srchstat == 2)
-	{
-		if (srchzoff < 0) { srchstat = 3; break; }
-		if (wildmatch(&kzhashbuf[srchzoff+21],newildst))
-		{
-			//strcpy(filnam,&kzhashbuf[srchzoff+21]);
-			filnam[0] = '|'; strcpy(&filnam[1],&kzhashbuf[srchzoff+21]);
-			srchzoff = *(int *)&kzhashbuf[srchzoff+4];
-			return(1);
-		}
-		srchzoff = *(int *)&kzhashbuf[srchzoff+4];
-	}
-	while (srchstat == 3)
-	{
-		if (srchdoff < 0) { srchstat = -1; break; }
-		strcpy(newildst,&kzhashbuf[srchdoff+4]);
-		i = strlen(newildst);
-		if ((i) && (newildst[i-1] != '/') && (newildst[i-1] != '\\') && (filnam[0] != '/') && (filnam[0] != '\\'))
-#if (defined(__DOS__) || defined(_WIN32))
-			strcat(newildst,"\\");
-#else
-			strcat(newildst,"/");
-#endif
-		strcat(newildst,wildst);
-		srchdoff = *(int *)&kzhashbuf[srchdoff];
-		srchstat = 0; goto kzfindfile_beg;
-	}
-
-	return(0);
-}
-
-//File searching code (supports inside ZIP files!) How to use this code:
-//   char filnam[MAX_PATH];
-//   kzfindfilestart("vxl/*.vxl");
-//   while (kzfindfile(filnam)) puts(filnam);
-//NOTES:
-// * Directory names end with '\' or '/' (depending on system)
-// * Files inside zip begin with '|'
 
 // --------------------------------------------------------------------------
 
@@ -18503,22 +17865,6 @@ int kzfilelength ()
 	return(kzfs.leng);
 }
 
-	//WARNING: kzseek(<-32768,SEEK_CUR); or:
-	//         kzseek(0,SEEK_END);       can make next kzread very slow!!!
-int kzseek (int offset, int whence)
-{
-	if (!kzfs.fil) return(-1);
-	switch (whence)
-	{
-		case SEEK_CUR: kzfs.pos += offset; break;
-		case SEEK_END: kzfs.pos = kzfs.leng+offset; break;
-		case SEEK_SET: default: kzfs.pos = offset;
-	}
-	if (kzfs.pos < 0) kzfs.pos = 0;
-	if (kzfs.pos > kzfs.leng) kzfs.pos = kzfs.leng;
-	return(kzfs.pos);
-}
-
 int kztell ()
 {
 	if (!kzfs.fil) return(-1);
@@ -18530,12 +17876,6 @@ int kzgetc ()
 	char ch;
 	if (!kzread(&ch,1)) return(-1);
 	return((int)ch);
-}
-
-int kzeof ()
-{
-	if (!kzfs.fil) return(-1);
-	return(kzfs.pos >= kzfs.leng);
 }
 
 void kzclose ()
