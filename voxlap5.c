@@ -11965,9 +11965,6 @@ spritetype spr[MAXSPRITES], tempspr, woodspr, ospr2goal, spr2goal;
 long numsprites, spr2goaltim = 0;
 //long sortorder[MAXSPRITES];
 
-long curvystp = (~1); //<0=don't draw, 0=draw normal, 1=draw curvy&use this step size
-kv6data *curvykv6 = 0;
-vx5sprite curvyspr;
 long lockanginc = 0;
 
 	//Mouse button state global variables:
@@ -11977,67 +11974,6 @@ long obstatus = 0, bstatus = 0;
 double odtotclk, dtotclk;
 float fsynctics;
 long totclk;
-
-	//This is used to control the rate of rapid fire
-#define MAXWEAP 4
-long curweap = 1, lastshottime[MAXWEAP] = {0,0,0,0};
-long myhealth = 100;
-long numdynamite = 0, numjoystick = 0;
-
-	//See AIMGRAV.BAS for derivation
-	//     Given: (dx,dy,dz): difference vector (target - source)
-	//                  grav: acceleration of gravity
-	//                     v: velocity
-	//returns: (*xi,*yi,*zi): shooting velocity
-	//
-	//Assumes that velocity&gravity are processed (approximately) like this:
-	//   x += xi; y += yi; z += zi; zi += grav;
-long aimgrav (float dx, float dy, float dz, float *xi, float *yi, float *zi, float grav, float v)
-{
-	double dd2, dd, Zc, vv, dz2, k, Ya, Yb, zii, di;
-
-	dd2 = dx*dx + dy*dy;
-	if (dd2 == 0)
-		{ (*xi) = 0; (*yi) = 0; if (dz < 0) (*zi) = -v; else (*zi) = v; return(0); }
-	dd = sqrt(dd2); Zc = grav*dd2*.5;
-	vv = v*v; dz2 = dz*dz; k = dz2*vv - Zc*dz*2;
-	Ya = (dz2+dd2)*2; Yb = Ya*vv*.5 + k;
-	zii = Yb*Yb - (k*vv + Zc*Zc)*Ya*2; if (zii < 0) return(-1);
-	zii = (Yb-sqrt(zii)) / Ya; //fast (low) trajectory
-	if (zii < 0) (*zi) = 0; else (*zi) = sqrt(zii);
-	if (dz*vv < Zc) (*zi) = -(*zi);
-	if (vv < zii) { (*xi) = (*yi) = 0; return(0); }
-	di = sqrt(vv-zii)/dd; (*xi) = di*dx; (*yi) = di*dy; return(0);
-}
-
-void vecrand (float sc, point3d *a)
-{
-	float f;
-
-		//UNIFORM spherical randomization (see spherand.c)
-	a->z = ((double)(rand()&32767))/16383.5-1.0;
-	f = (((double)(rand()&32767))/16383.5-1.0)*PI; a->x = cos(f); a->y = sin(f);
-	f = sqrt(1.0 - a->z*a->z)*sc; a->x *= f; a->y *= f; a->z *= sc;
-}
-
-void matrand (float sc, point3d *a, point3d *b, point3d *c)
-{
-	float f;
-
-	vecrand(sc,a);
-	vecrand(sc,c);
-	b->x = a->y*c->z - a->z*c->y;
-	b->y = a->z*c->x - a->x*c->z;
-	b->z = a->x*c->y - a->y*c->x;
-	f = sc/sqrt(b->x*b->x + b->y*b->y + b->z*b->z);
-	b->x *= f; b->y *= f; b->z *= f;
-
-	c->x = a->y*b->z - a->z*b->y;
-	c->y = a->z*b->x - a->x*b->z;
-	c->z = a->x*b->y - a->y*b->x;
-
-	a->x *= sc; a->y *= sc; a->z *= sc;
-}
 
 void findrandomspot (long *x, long *y, long *z)
 {
@@ -12052,15 +11988,6 @@ void findrandomspot (long *x, long *y, long *z)
 			if (!isvoxelsolid(*x,*y,*z)) break;
 		cnt--;
 	} while (((*z) < 0) && (cnt > 0));
-}
-
-long isboxempty (long x0, long y0, long z0, long x1, long y1, long z1)
-{
-	long x, y;
-	for(y=y0;y<y1;y++)
-		for(x=x0;x<x1;x++)
-			if (anyvoxelsolid(x,y,z0,z1)) return(1);
-	return(0);
 }
 
 	//Returns 0 if any voxel inside (vx-x)ý+(vy-y)ý+(vz-z)ý < rý is solid
@@ -12562,52 +12489,6 @@ void doframe ()
 	if (woodspr.owner >= 0)
 		drawsprite(&woodspr);
 
-	if (curvystp >= 0)
-	{
-		if (!curvystp) drawsprite(&curvyspr);
-		else
-		{
-			switch ((totclk>>11)%3)
-			{
-				case 0: drawspritebendx(&curvyspr,sin((double)(totclk&2047)*PI/1024.0)*1.0,curvystp); break;
-				case 1: drawspritebendy(&curvyspr,sin((double)(totclk&2047)*PI/1024.0)*1.0,curvystp); break;
-				case 2: drawspritetwist(&curvyspr,sin((double)(totclk&2047)*PI/1024.0)*2.0,curvystp); break;
-			}
-		}
-	}
-
-	if (numdynamite > 0)
-	{
-		dpos.x = 0; dpos.y = 0; dpos.z = -2;
-		  dp.x = 1;   dp.y = 0;   dp.z = 0;
-		 dp2.x = 0;  dp2.y = 1;  dp2.z = 0;
-		 dp3.x = 0;  dp3.y = 0;  dp3.z = 1;
-		setcamera(&dpos,&dp,&dp2,&dp3,xres*.08,yres*.92,xres*.5);
-		tempspr.p.x = 0; tempspr.p.y = 0; tempspr.p.z = 0; f = .0135;
-		tempspr.s.x = f; tempspr.s.y = 0; tempspr.s.z = 0;
-		tempspr.h.x = 0; tempspr.h.y = 0; tempspr.h.z = -f;
-		tempspr.f.x = 0; tempspr.f.y = f; tempspr.f.z = 0;
-		orthorotate(dtotclk*2,0,0,&tempspr.s,&tempspr.h,&tempspr.f);
-		tempspr.flags = 0;
-		tempspr.voxnum = kv6[TNTBUNDL];
-		drawsprite(&tempspr);
-	}
-	if (numjoystick > 0)
-	{
-		dpos.x = 0; dpos.y = 0; dpos.z = -2;
-		  dp.x = 1;   dp.y = 0;   dp.z = 0;
-		 dp2.x = 0;  dp2.y = 1;  dp2.z = 0;
-		 dp3.x = 0;  dp3.y = 0;  dp3.z = 1;
-		setcamera(&dpos,&dp,&dp2,&dp3,xres*.16,yres*.92,xres*.5);
-		tempspr.p.x = 0; tempspr.p.y = 0; tempspr.p.z = 0; f = .011;
-		tempspr.s.x = f; tempspr.s.y = 0; tempspr.s.z = 0;
-		tempspr.h.x = 0; tempspr.h.y = 0; tempspr.h.z = -f;
-		tempspr.f.x = 0; tempspr.f.y = f; tempspr.f.z = 0;
-		orthorotate(dtotclk*2,0,0,&tempspr.s,&tempspr.h,&tempspr.f);
-		tempspr.flags = 0;
-		tempspr.voxnum = kv6[JOYSTICK]; drawsprite(&tempspr);
-	}
-
 	stopdirectdraw();
 	nextpage();
 skipalldraw:;
@@ -12721,17 +12602,7 @@ skipalldraw:;
 	f = ivel.x*ivel.x + ivel.y*ivel.y + ivel.z*ivel.z; //Limit maximum velocity
 	if (f > 8.0*8.0) { f = 8.0/sqrt(f); ivel.x *= f; ivel.y *= f; ivel.z *= f; }
 
-	for(i=0;i<MAXWEAP;i++)
-		if (keystatus[i+2]) curweap = i;
-
 	updatevxl();
-
-	if (keystatus[0x9c]) //KP Enter
-	{
-		keystatus[0x9c] = 0;
-		static long macq = 1;
-		macq ^= 1; setacquire(macq,1);
-	}
 }
 
 /// ------- KPLIB code begins
