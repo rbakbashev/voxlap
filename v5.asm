@@ -16,30 +16,12 @@ EXTRN _gxmax : dword
 EXTRN _gcsub : dword    ;long[4]
 EXTRN _gylookup : dword ;long[256+4+128+4+...]
 EXTRN _gmipnum : dword
-;EXTRN _cf : dword      ;{ long i0,i1,z0,z1,cx0,cy0,cx1,cy1; }[128]
 
 EXTRN _sptr : dword
 
 EXTRN _skyoff : dword   ;Memory offset to start of longitude line
 EXTRN _skyxsiz : dword  ;Size of longitude line
 EXTRN _skylat : dword   ;long[_skyxsiz] : latitude's unit dir. vector
-
-;How to declare C-ASM shared variables in the ASM code:
-;ASM:                    C:
-;   PUBLIC _xr0             extern void *xr0;
-;   ALIGN 16                #define lxr0 ((long *)&xr0)
-;   _xr0: dd 0,0,0,0        #define fxr0 ((float *)&xr0)
-;   Use: _xr0               Use: lxr0[0-3]  or:  fxr0[0-3]
-
-;EXTRN _reax: dword
-;EXTRN _rebx: dword
-;EXTRN _recx: dword
-;EXTRN _redx: dword
-;EXTRN _resi: dword
-;EXTRN _redi: dword
-;EXTRN _rebp: dword
-;EXTRN _resp: dword
-;EXTRN _remm: dword  ;long[16]
 
 CODE SEGMENT PUBLIC USE32 'CODE'
 ASSUME cs:CODE,ds:CODE

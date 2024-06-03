@@ -53,21 +53,6 @@ typedef struct { float x, y, z; } point3d;
 typedef struct { float x, y, z, z2; } point4d;
 typedef struct { double x, y, z; } dpoint3d;
 
-	//Sprite structures:
-typedef struct { long col; unsigned short z; char vis, dir; } kv6voxtype;
-
-typedef struct kv6data
-{
-	long leng, xsiz, ysiz, zsiz;
-	float xpiv, ypiv, zpiv;
-	unsigned long numvoxs;
-	long namoff;
-	kv6data *lowermip;
-	kv6voxtype *vox;      //numvoxs*sizeof(kv6voxtype)
-	unsigned long *xlen;  //xsiz*sizeof(long)
-	unsigned short *ylen; //xsiz*ysiz*sizeof(short)
-} kv6data;
-
 #pragma pack(pop)
 
 #define MAXFRM 1024 //MUST be even number for alignment!
@@ -79,11 +64,6 @@ extern
 struct
 {
 	//------------------------ DATA coming from VOXLAP5 ------------------------
-
-		//Clipmove hit point info (use this after calling clipmove):
-	double clipmaxcr; //clipmove always calls findmaxcr even with no movement
-	dpoint3d cliphit[3];
-	long cliphitnum;
 
 		//Bounding box written by last set* VXL writing call
 	long minx, miny, minz, maxx, maxy, maxz;
@@ -133,8 +113,6 @@ extern void opticast ();
 	//Physics helper functions:
 extern void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
 extern double findmaxcr (double, double, double, double);
-extern void clipmove (dpoint3d *, dpoint3d *, double);
-extern void estnorm (long, long, long, point3d *);
 
 	//VXL reading functions (fast!):
 extern long isvoxelsolid (long, long, long);
@@ -1306,196 +1284,6 @@ deletez:;
 	ce--; if (ce < &cf[128]) return;
 	for(c2=c;c2<=ce;c2++) c2[0] = c2[1];
 	goto afterdelete;
-#endif
-}
-
-#ifdef _MSC_VER
-
-static _inline void mmxcoloradd (long *a)
-{
-	_asm
-	{
-		mov eax, a
-		movd mm0, [eax]
-		paddusb mm0, flashbrival
-		movd [eax], mm0
-	}
-}
-
-static _inline void mmxcolorsub (long *a)
-{
-	_asm
-	{
-		mov eax, a
-		movd mm0, [eax]
-		psubusb mm0, flashbrival
-		movd [eax], mm0
-	}
-}
-
-#endif
-
-static _inline void addusb (char *a, long b)
-{
-	(*a) += b; if ((*a) < b) (*a) = 255;
-}
-
-#if (ESTNORMRAD == 2)
-static signed char bitnum[32] =
-{
-	0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
-	1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5
-};
-//static long bitsum[32] =
-//{
-//   0,-2,-1,-3, 0,-2,-1,-3, 1,-1, 0,-2, 1,-1, 0,-2,
-//   2, 0, 1,-1, 2, 0, 1,-1, 3, 1, 2, 0, 3, 1, 2, 0
-//};
-static long bitsnum[32] =
-{
-	0        ,1-(2<<16),1-(1<<16),2-(3<<16),
-	1        ,2-(2<<16),2-(1<<16),3-(3<<16),
-	1+(1<<16),2-(1<<16),2        ,3-(2<<16),
-	2+(1<<16),3-(1<<16),3        ,4-(2<<16),
-	1+(2<<16),2        ,2+(1<<16),3-(1<<16),
-	2+(2<<16),3        ,3+(1<<16),4-(1<<16),
-	2+(3<<16),3+(1<<16),3+(2<<16),4,
-	3+(3<<16),4+(1<<16),4+(2<<16),5
-};
-static float fsqrecip[5860]; //75*75 + 15*15 + 3*3 = 5859 is max value (5*5*5 box)
-#endif
-
-void estnorm (long x, long y, long z, point3d *fp)
-{
-	lpoint3d n;
-	long *lptr, xx, yy, zz, b[5], i, j, k;
-	float f;
-
-	n.x = 0; n.y = 0; n.z = 0;
-
-#if (ESTNORMRAD == 2)
-	if (labs(x-xbsox) + labs(y-xbsoy) > 1)
-	{
-			//x,y not close enough to cache: calls expandbitstack 25 times :(
-		xbsox = x; xbsoy = y; xbsof = 24*5;
-		lptr = (long *)(&xbsbuf[24*5+1]);
-		for(yy=-2;yy<=2;yy++)
-			for(xx=-2;xx<=2;xx++,lptr-=10)
-				expandbitstack(x+xx,y+yy,(__int64 *)lptr);
-	}
-	else if (x != xbsox)
-	{
-			//shift xbsbuf cache left/right: calls expandbitstack 5 times :)
-		if (x < xbsox) { xx = -2; xbsof -= 24*5; lptr = (long *)(&xbsbuf[xbsof+1]); }
-					 else { xx = 2; lptr = (long *)(&xbsbuf[xbsof-5*5+1]); xbsof -= 1*5; }
-		xbsox = x; if (xbsof < 0) xbsof += 25*5;
-		for(yy=-2;yy<=2;yy++)
-		{
-			if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-			expandbitstack(x+xx,y+yy,(__int64 *)lptr);
-			lptr -= 5*10;
-		}
-	}
-	else if (y != xbsoy)
-	{
-			//shift xbsbuf cache up/down: calls expandbitstack 5 times :)
-		if (y < xbsoy) { yy = -2; xbsof -= 20*5; lptr = (long *)(&xbsbuf[xbsof+1]); }
-					 else { yy = 2; lptr = (long *)(&xbsbuf[xbsof+1]); xbsof -= 5*5; }
-		xbsoy = y; if (xbsof < 0) xbsof += 25*5;
-		for(xx=-2;xx<=2;xx++)
-		{
-			if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-			expandbitstack(x+xx,y+yy,(__int64 *)lptr);
-			lptr -= 1*10;
-		}
-	}
-
-	z -= 2;
-	if ((z&31) <= 27) //2 <= (z&31) <= 29
-		{ lptr = (long *)((long)(&xbsbuf[xbsof+1]) + ((z&~31)>>3)); z &= 31; }
-	else
-		{ lptr = (long *)((long)(&xbsbuf[xbsof+1]) + (z>>3)); z &= 7; }
-
-	for(yy=-2;yy<=2;yy++)
-	{
-		if (lptr >= (long *)&xbsbuf[1+10*5])
-		{
-			b[0] = ((lptr[  0]>>z)&31); b[1] = ((lptr[-10]>>z)&31);
-			b[2] = ((lptr[-20]>>z)&31); b[3] = ((lptr[-30]>>z)&31);
-			b[4] = ((lptr[-40]>>z)&31); lptr -= 50;
-		}
-		else
-		{
-			b[0] = ((lptr[0]>>z)&31); lptr -= 10; if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-			b[1] = ((lptr[0]>>z)&31); lptr -= 10; if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-			b[2] = ((lptr[0]>>z)&31); lptr -= 10; if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-			b[3] = ((lptr[0]>>z)&31); lptr -= 10; if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-			b[4] = ((lptr[0]>>z)&31); lptr -= 10; if (lptr < (long *)&xbsbuf[1]) lptr += 25*10;
-		}
-
-			//Make filter spherical
-		//if (yy&1) { b[0] &= 0xe; b[4] &= 0xe; }
-		//else if (yy) { b[0] &= 0x4; b[1] &= 0xe; b[3] &= 0xe; b[4] &= 0x4; }
-
-		n.x += ((bitnum[b[4]]-bitnum[b[0]])<<1)+bitnum[b[3]]-bitnum[b[1]];
-		j = bitsnum[b[0]]+bitsnum[b[1]]+bitsnum[b[2]]+bitsnum[b[3]]+bitsnum[b[4]];
-		n.z += j; n.y += (*(signed short *)&j)*yy;
-	}
-	n.z >>= 16;
-#else
-	for(yy=-ESTNORMRAD;yy<=ESTNORMRAD;yy++)
-		for(xx=-ESTNORMRAD;xx<=ESTNORMRAD;xx++)
-			for(zz=-ESTNORMRAD;zz<=ESTNORMRAD;zz++)
-				if (isvoxelsolid(x+xx,y+yy,z+zz))
-					{ n.x += xx; n.y += yy; n.z += zz; }
-#endif
-
-#if 1
-	f = fsqrecip[n.x*n.x + n.y*n.y + n.z*n.z];
-	fp->x = ((float)n.x)*f; fp->y = ((float)n.y)*f; fp->z = ((float)n.z)*f;
-#else
-
-		//f = 1.0 / sqrt((double)(n.x*n.x + n.y*n.y + n.z*n.z));
-		//fp->x = f*(float)n.x; fp->y = f*(float)n.y; fp->z = f*(float)n.z;
-	zz = n.x*n.x + n.y*n.y + n.z*n.z;
-	if (cputype&(1<<25))
-	{
-		_asm
-		{
-			cvtsi2ss xmm0, zz
-			rsqrtss xmm0, xmm0
-			;movss f, xmm0
-
-				;fp->x = f*(float)n.x; fp->y = f*(float)n.y; fp->z = f*(float)n.z;
-			cvtsi2ss xmm1, n.z
-			shufps xmm0, xmm0, 0
-			mov eax, fp
-			movlhps xmm1, xmm1
-			cvtpi2ps xmm1, n
-			mulps xmm0, xmm1
-			movlps [eax], xmm0
-			movhlps xmm0, xmm0
-			movss [eax+8], xmm0
-		}
-	}
-	else
-	{
-		_asm
-		{
-			pi2fd mm0, zz       ;mm0:     0          zz
-			pfrsqrt mm0, mm0    ;mm0: 1/sqrt(zz) 1/sqrt(zz)
-			pi2fd mm1, n.x      ;mm1:     0         n.x
-			pi2fd mm2, n.y      ;mm2:     0         n.y
-			punpckldq mm1, mm2  ;mm1:    n.y        n.x
-			pi2fd mm2, n.z      ;mm2:     0         n.z
-			pfmul mm1, mm0      ;mm1:n.y/sqrt(zz) n.x/sqrt(zz)
-			pfmul mm2, mm0      ;mm2:     0       n.z/sqrt(zz)
-			mov eax, fp
-			movq [eax], mm1
-			movd [eax+8], mm2
-			femms
-		}
-	}
 #endif
 }
 
@@ -3251,340 +3039,6 @@ void setsideshades (char sto, char sbo, char sle, char sri, char sup, char sdo)
 	else vx5.sideshademode = 1;
 }
 
-	//MUST have more than: CEILING(max possible CLIPRADIUS) * 4 entries!
-#define MAXCLIPIT (VSID*4) //VSID*2+4 is not a power of 2!
-static lpoint2d clipit[MAXCLIPIT];
-
-double findmaxcr (double px, double py, double pz, double cr)
-{
-	double f, g, maxcr, thresh2;
-	long x, y, z, i0, i1, ix, y0, y1, z0, z1;
-	char *v;
-
-	thresh2 = cr+1.7321+1; thresh2 *= thresh2;
-	maxcr = cr*cr;
-
-		//Find closest point of all nearby cubes to (px,py,pz)
-	x = (long)px; y = (long)py; z = (long)pz; i0 = i1 = 0; ix = x; y0 = y1 = y;
-	while (1)
-	{
-		f = max(fabs((double)x+.5-px)-.5,0);
-		g = max(fabs((double)y+.5-py)-.5,0);
-		f = f*f + g*g;
-		if (f < maxcr)
-		{
-			if (((unsigned long)x >= VSID) || ((unsigned long)y >= VSID))
-				{ z0 = z1 = 0; }
-			else
-			{
-				v = sptr[y*VSID+x];
-				if (z >= v[1])
-				{
-					while (1)
-					{
-						if (!v[0]) { z0 = z1 = 0; break; }
-						v += v[0]*4;
-						if (z < v[1]) { z0 = v[3]; z1 = v[1]; break; }
-					}
-				}
-				else { z0 = MAXZDIM-2048; z1 = v[1]; }
-			}
-
-			if ((pz <= z0) || (pz >= z1))
-				maxcr = f;
-			else
-			{
-				g = min(pz-(double)z0,(double)z1-pz);
-				f += g*g; if (f < maxcr) maxcr = f;
-			}
-		}
-
-		if ((x-px)*(x-px)+(y-py)*(y-py) < thresh2)
-		{
-			if ((x <= ix) && (x > 0))
-				{ clipit[i1].x = x-1; clipit[i1].y = y; i1 = ((i1+1)&(MAXCLIPIT-1)); }
-			if ((x >= ix) && (x < VSID-1))
-				{ clipit[i1].x = x+1; clipit[i1].y = y; i1 = ((i1+1)&(MAXCLIPIT-1)); }
-			if ((y <= y0) && (y > 0))
-				{ clipit[i1].x = x; clipit[i1].y = y-1; i1 = ((i1+1)&(MAXCLIPIT-1)); y0--; }
-			if ((y >= y1) && (y < VSID-1))
-				{ clipit[i1].x = x; clipit[i1].y = y+1; i1 = ((i1+1)&(MAXCLIPIT-1)); y1++; }
-		}
-		if (i0 == i1) break;
-		x = clipit[i0].x; y = clipit[i0].y; i0 = ((i0+1)&(MAXCLIPIT-1));
-	}
-	return(sqrt(maxcr));
-}
-
-static double gx0, gy0, gcrf2, grdst, gendt, gux, guy;
-static long gdist2square (double x, double y)
-{
-	double t;
-	x -= gx0; y -= gy0; t = x*gux + y*guy; if (t <= 0) t = gcrf2;
-	else if (t*grdst >= gendt) { x -= gux*gendt; y -= guy*gendt; t = gcrf2; }
-	else t = t*t*grdst + gcrf2;
-	return(x*x + y*y <= t);
-}
-
-long sphtrace (double x0, double y0, double z0,          //start pt
-					double vx, double vy, double vz,          //move vector
-					double *hitx, double *hity, double *hitz, //new pt after collision
-					double *clpx, double *clpy, double *clpz, //pt causing collision
-					double cr, double acr)
-{
-	double f, t, dax, day, daz, vyx, vxy, vxz, vyz, rvz, cr2, fz, fc;
-	double dx, dy, dx1, dy1;
-	double nx, ny, intx, inty, intz, dxy, dxz, dyz, dxyz, rxy, rxz, ryz, rxyz;
-	long i, j, x, y, ix, iy0, iy1, i0, i1, iz[2], cz0, cz1;
-	char *v;
-
-		 //Precalculate global constants for ins & getval functions
-	if ((vx == 0) && (vy == 0) && (vz == 0))
-		{ (*hitx) = x0; (*hity) = y0; (*hitz) = z0; return(1); }
-	gux = vx; guy = vy; gx0 = x0; gy0 = y0; dxy = vx*vx + vy*vy;
-	if (dxy != 0) rxy = 1.0 / dxy; else rxy = 0;
-	grdst = rxy; gendt = 1; cr2 = cr*cr; t = cr + 0.7072; gcrf2 = t*t;
-
-	if (((long *)&vz)[1] >= 0) { dtol(   z0-cr-.5,&cz0); dtol(vz+z0+cr-.5,&cz1); }
-								 else { dtol(vz+z0-cr-.5,&cz0); dtol(   z0+cr-.5,&cz1); }
-
-		//Precalculate stuff for closest point on cube finder
-	dax = 0; day = 0; vyx = 0; vxy = 0; rvz = 0; vxz = 0; vyz = 0;
-	if (vx != 0) { vyx = vy/vx; if (((long *)&vx)[1] >= 0) dax = x0+cr; else dax = x0-cr-1; }
-	if (vy != 0) { vxy = vx/vy; if (((long *)&vy)[1] >= 0) day = y0+cr; else day = y0-cr-1; }
-	if (vz != 0)
-	{
-		rvz = 1.0/vz; vxz = vx*rvz; vyz = vy*rvz;
-		if (((long *)&vz)[1] >= 0) daz = z0+cr; else daz = z0-cr;
-	}
-
-	dxyz = vz*vz;
-	dxz = vx*vx+dxyz; if (dxz != 0) rxz = 1.0 / dxz;
-	dyz = vy*vy+dxyz; if (dyz != 0) ryz = 1.0 / dyz;
-	dxyz += dxy; rxyz = 1.0 / dxyz;
-
-	dtol(x0-.5,&x); dtol(y0-.5,&y);
-	ix = x; iy0 = iy1 = y;
-	i0 = 0; clipit[0].x = x; clipit[0].y = y; i1 = 1;
-	do
-	{
-		x = clipit[i0].x; y = clipit[i0].y; i0 = ((i0+1)&(MAXCLIPIT-1));
-
-		dx = (double)x; dx1 = (double)(x+1);
-		dy = (double)y; dy1 = (double)(y+1);
-
-			//closest point on cube finder
-			//Plane intersection (both vertical planes)
-#if 0
-		intx = dbound((dy-day)*vxy + x0,dx,dx1);
-		inty = dbound((dx-dax)*vyx + y0,dy,dy1);
-#else
-		intx = (dy-day)*vxy + x0;
-		inty = (dx-dax)*vyx + y0;
-		if (((long *)&intx)[1] < ((long *)&dx)[1]) intx = dx;
-		if (((long *)&inty)[1] < ((long *)&dy)[1]) inty = dy;
-		if (((long *)&intx)[1] >= ((long *)&dx1)[1]) intx = dx1;
-		if (((long *)&inty)[1] >= ((long *)&dy1)[1]) inty = dy1;
-		//if (intx < (double)x) intx = (double)x;
-		//if (inty < (double)y) inty = (double)y;
-		//if (intx > (double)(x+1)) intx = (double)(x+1);
-		//if (inty > (double)(y+1)) inty = (double)(y+1);
-#endif
-
-		do
-		{
-			if (((long *)&dxy)[1] == 0) { t = -1.0; continue; }
-			nx = intx-x0; ny = inty-y0; t = vx*nx + vy*ny; if (((long *)&t)[1] < 0) continue;
-			f = cr2 - nx*nx - ny*ny; if (((long *)&f)[1] >= 0) { t = -1.0; continue; }
-			f = f*dxy + t*t; if (((long *)&f)[1] < 0) { t = -1.0; continue; }
-			t = (t-sqrt(f))*rxy;
-		} while (0);
-		if (t >= gendt) goto sphtracecont;
-		if (((long *)&t)[1] < 0) intz = z0; else intz = vz*t + z0;
-
-			//Find closest ceil(iz[0]) & flor(iz[1]) in (x,y) column
-		dtol(intz-.5,&i);
-		if ((unsigned long)(x|y) < VSID)
-		{
-			v = sptr[y*VSID+x]; iz[0] = MAXZDIM-2048; iz[1] = v[1];
-			while (i >= iz[1])
-			{
-				if (!v[0]) { iz[1] = -1; break; }
-				v += v[0]*4;
-				iz[0] = v[3]; if (i < iz[0]) { iz[1] = -1; break; }
-				iz[1] = v[1];
-			}
-		}
-		else iz[1] = -1;
-
-			//hit xz plane, yz plane or z-axis edge?
-		if (iz[1] < 0) //Treat whole column as solid
-		{
-			if (((long *)&t)[1] >= 0) { gendt = t; (*clpx) = intx; (*clpy) = inty; (*clpz) = intz; goto sphtracecont; }
-		}
-
-			//Must check tops & bottoms of slab
-		for(i=1;i>=0;i--)
-		{
-				//Ceil/flor outside of quick&dirty bounding box
-			if ((iz[i] < cz0) || (iz[i] > cz1)) continue;
-
-				//Plane intersection (parallel to ground)
-			intz = (double)iz[i]; t = intz-daz;
-			intx = t*vxz + x0;
-			inty = t*vyz + y0;
-
-			j = 0;                         // A ³ 8 ³ 9
-			//     if (intx < dx)  j |= 2; //ÄÄÄÅÄÄÄÅÄÄÄ
-			//else if (intx > dx1) j |= 1; // 2 ³ 0 ³ 1
-			//     if (inty < dy)  j |= 8; //ÄÄÄÅÄÄÄÅÄÄÄ
-			//else if (inty > dy1) j |= 4; // 6 ³ 4 ³ 5
-				  if (((long *)&intx)[1] <  ((long *)&dx)[1])  j |= 2;
-			else if (((long *)&intx)[1] >= ((long *)&dx1)[1]) j |= 1;
-				  if (((long *)&inty)[1] <  ((long *)&dy)[1])  j |= 8;
-			else if (((long *)&inty)[1] >= ((long *)&dy1)[1]) j |= 4;
-
-				//NOTE: only need to check once per "for"!
-			if ((!j) && (vz != 0)) //hit xy plane?
-			{
-				t *= rvz;
-				if ((((long *)&t)[1] >= 0) && (t < gendt)) { gendt = t; (*clpx) = intx; (*clpy) = inty; (*clpz) = intz; }
-				continue;
-			}
-
-				//common calculations used for rest of checks...
-			fz = intz-z0; fc = cr2-fz*fz; fz *= vz;
-
-			if (j&3)
-			{
-				nx = (double)((j&1)+x);
-				if (((long *)&dxz)[1] != 0) //hit y-axis edge?
-				{
-					f = nx-x0; t = vx*f + fz; f = (fc - f*f)*dxz + t*t;
-					if (((long *)&f)[1] >= 0) t = (t-sqrt(f))*rxz; else t = -1.0;
-				} else t = -1.0;
-				ny = vy*t + y0;
-					  if (((long *)&ny)[1] > ((long *)&dy1)[1]) j |= 0x10;
-				else if (((long *)&ny)[1] >= ((long *)&dy)[1])
-				{
-					if ((((long *)&t)[1] >= 0) && (t < gendt)) { gendt = t; (*clpx) = nx; (*clpy) = ny; (*clpz) = intz; }
-					continue;
-				}
-				inty = (double)(((j>>4)&1)+y);
-			}
-			else inty = (double)(((j>>2)&1)+y);
-
-			if (j&12)
-			{
-				ny = (double)(((j>>2)&1)+y);
-				if (((long *)&dyz)[1] != 0) //hit x-axis edge?
-				{
-					f = ny-y0; t = vy*f + fz; f = (fc - f*f)*dyz + t*t;
-					if (((long *)&f)[1] >= 0) t = (t-sqrt(f))*ryz; else t = -1.0;
-				} else t = -1.0;
-				nx = vx*t + x0;
-					  if (((long *)&nx)[1] > ((long *)&dx1)[1]) j |= 0x20;
-				else if (((long *)&nx)[1] >= ((long *)&dx)[1])
-				{
-					if ((((long *)&t)[1] >= 0) && (t < gendt)) { gendt = t; (*clpx) = nx; (*clpy) = ny; (*clpz) = intz; }
-					continue;
-				}
-				intx = (double)(((j>>5)&1)+x);
-			}
-			else intx = (double)((j&1)+x);
-
-				//hit corner?
-			nx = intx-x0; ny = inty-y0;
-			t = vx*nx + vy*ny + fz; if (((long *)&t)[1] < 0) continue;
-			f = fc - nx*nx - ny*ny; if (((long *)&f)[1] >= 0) continue;
-			f = f*dxyz + t*t; if (((long *)&f)[1] < 0) continue;
-			t = (t-sqrt(f))*rxyz;
-			if (t < gendt) { gendt = t; (*clpx) = intx; (*clpy) = inty; (*clpz) = intz; }
-		}
-sphtracecont:;
-		if ((x <= ix)  && (x >      0) && (gdist2square(dx- .5,dy+ .5))) { clipit[i1].x = x-1; clipit[i1].y = y; i1 = ((i1+1)&(MAXCLIPIT-1)); }
-		if ((x >= ix)  && (x < VSID-1) && (gdist2square(dx+1.5,dy+ .5))) { clipit[i1].x = x+1; clipit[i1].y = y; i1 = ((i1+1)&(MAXCLIPIT-1)); }
-		if ((y <= iy0) && (y >      0) && (gdist2square(dx+ .5,dy- .5))) { clipit[i1].x = x; clipit[i1].y = y-1; i1 = ((i1+1)&(MAXCLIPIT-1)); iy0 = y-1; }
-		if ((y >= iy1) && (y < VSID-1) && (gdist2square(dx+ .5,dy+1.5))) { clipit[i1].x = x; clipit[i1].y = y+1; i1 = ((i1+1)&(MAXCLIPIT-1)); iy1 = y+1; }
-	} while (i0 != i1);
-#if 1
-	(*hitx) = dbound(vx*gendt + x0,acr,VSID-acr);
-	(*hity) = dbound(vy*gendt + y0,acr,VSID-acr);
-	(*hitz) = dbound(vz*gendt + z0,MAXZDIM-2048+acr,MAXZDIM-1-acr);
-#else
-	(*hitx) = min(max(vx*gendt + x0,acr),VSID-acr);
-	(*hity) = min(max(vy*gendt + y0,acr),VSID-acr);
-	(*hitz) = min(max(vz*gendt + z0,MAXZDIM-2048+acr),MAXZDIM-1-acr);
-#endif
-	return(gendt == 1);
-}
-
-void clipmove (dpoint3d *p, dpoint3d *v, double acr)
-{
-	double f, gx, gy, gz, nx, ny, nz, ex, ey, ez, hitx, hity, hitz, cr;
-	//double nx2, ny2, nz2, ex2, ey2, ez2; //double ox, oy, oz;
-	long i, j, k;
-
-	//ox = p->x; oy = p->y; oz = p->z;
-	gx = p->x+v->x; gy = p->y+v->y; gz = p->z+v->z;
-
-	cr = findmaxcr(p->x,p->y,p->z,acr);
-	vx5.clipmaxcr = cr;
-
-	vx5.cliphitnum = 0;
-	for(i=0;i<3;i++)
-	{
-		if ((v->x == 0) && (v->y == 0) && (v->z == 0)) break;
-
-		cr -= 1e-7;  //Shrinking radius error control hack
-
-		//j = sphtraceo(p->x,p->y,p->z,v->x,v->y,v->z,&nx,&ny,&nz,&ex,&ey,&ez,cr,acr);
-		//k = sphtraceo(p->x,p->y,p->z,v->x,v->y,v->z,&nx2,&ny2,&nz2,&ex2,&ey2,&ez2,cr,acr);
-
-		j = sphtrace(p->x,p->y,p->z,v->x,v->y,v->z,&nx,&ny,&nz,&ex,&ey,&ez,cr,acr);
-
-		//if ((j != k) || (fabs(nx-nx2) > .000001) || (fabs(ny-ny2) > .000001) || (fabs(nz-nz2) > .000001) ||
-		//   ((j == 0) && ((fabs(ex-ex2) > .000001) || (fabs(ey-ey2) > .000001) || (fabs(ez-ez2) > .000001))))
-		//{
-		//   printf("%d %f %f %f %f %f %f\n",i,p->x,p->y,p->z,v->x,v->y,v->z);
-		//   printf("%f %f %f ",nx,ny,nz); if (!j) printf("%f %f %f\n",ex,ey,ez); else printf("\n");
-		//   printf("%f %f %f ",nx2,ny2,nz2); if (!k) printf("%f %f %f\n",ex2,ey2,ez2); else printf("\n");
-		//   printf("\n");
-		//}
-		if (j) { p->x = nx; p->y = ny; p->z = nz; break; }
-
-		vx5.cliphit[i].x = ex; vx5.cliphit[i].y = ey; vx5.cliphit[i].z = ez;
-		vx5.cliphitnum = i+1;
-		p->x = nx; p->y = ny; p->z = nz;
-
-			//Calculate slide vector
-		v->x = gx-nx; v->y = gy-ny; v->z = gz-nz;
-		switch(i)
-		{
-			case 0:
-				hitx = ex-nx; hity = ey-ny; hitz = ez-nz;
-				f = (v->x*hitx + v->y*hity + v->z*hitz) / (cr * cr);
-				v->x -= hitx*f; v->y -= hity*f; v->z -= hitz*f;
-				break;
-			case 1:
-				nx -= ex; ny -= ey; nz -= ez;
-				ex = hitz*ny - hity*nz;
-				ey = hitx*nz - hitz*nx;
-				ez = hity*nx - hitx*ny;
-				f = ex*ex + ey*ey + ez*ez; if (f <= 0) break;
-				f = (v->x*ex + v->y*ey + v->z*ez) / f;
-				v->x = ex*f; v->y = ey*f; v->z = ez*f;
-				break;
-			default: break;
-		}
-	}
-
-		//If you didn't move much, then don't move at all. This helps prevents
-		//cliprad from shrinking, but you get stuck too much :(
-	//if ((p->x-ox)*(p->x-ox) + (p->y-oy)*(p->y-oy) + (p->z-oz)*(p->z-oz) < 1e-12)
-	//   { p->x = ox; p->y = oy; p->z = oz; }
-}
-
 unsigned long calcglobalmass ()
 {
 	unsigned long i, j;
@@ -3859,27 +3313,6 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 	}
 
 	_asm emms
-
-#if 0 //TEMP HACK!!!
-	{
-	FILE *fil;
-	dpoint3d dp;
-	if (!(fil = fopen("temp512.vxl","wb"))) return;
-	i = 0x09072000; fwrite(&i,4,1,fil);  //Version
-	i = (VSID>>1); fwrite(&i,4,1,fil);
-	i = (VSID>>1); fwrite(&i,4,1,fil);
-	dp.x = (double)i*.5; dp.y = (double)i*.5; dp.z = (double)i*.5;
-	fwrite(&dp,24,1,fil);
-	dp.x = 1.0; dp.y = 0.0; dp.z = 0.0; fwrite(&dp,24,1,fil);
-	dp.x = 0.0; dp.y = 0.0; dp.z = 1.0; fwrite(&dp,24,1,fil);
-	dp.x = 0.0; dp.y =-1.0; dp.z = 0.0; fwrite(&dp,24,1,fil);
-	for(i=0;i<(VSID>>1)*(VSID>>1);i++)
-		fwrite((void *)sptr[i+VSID*VSID],slng(sptr[i+VSID*VSID]),1,fil);
-	fclose(fil);
-	}
-	gmipnum = 1;
-#endif
-
 }
 
 //------------------------- SXL parsing code begins --------------------------
@@ -4131,27 +3564,6 @@ long initvoxlap ()
 
 	for(i=0;i<32;i++) { xbsflor[i] = (-1<<i); xbsceil[i] = ~xbsflor[i]; }
 
-#if (ESTNORMRAD == 2)
-		//LUT for ESTNORM
-	fsqrecip[0] = 0.f; fsqrecip[1] = 1.f;
-	fsqrecip[2] = (float)(1.f/sqrt(2.f)); fsqrecip[3] = (float)1.f/sqrt(3.f);
-	for(z=4,i=3;z<sizeof(fsqrecip)/sizeof(fsqrecip[0]);z+=6) //fsqrecip[z] = 1/sqrt(z);
-	{
-		fsqrecip[z+0] = fsqrecip[(z+0)>>1]*fsqrecip[2];
-		fsqrecip[z+2] = fsqrecip[(z+2)>>1]*fsqrecip[2];
-		fsqrecip[z+4] = fsqrecip[(z+4)>>1]*fsqrecip[2];
-		fsqrecip[z+5] = fsqrecip[i]*fsqrecip[3]; i += 2;
-
-		f = (fsqrecip[z+0]+fsqrecip[z+2])*.5f;
-		if (z <= 22) f = (1.5f-(.5f*((float)(z+1))) * f*f)*f;
-		fsqrecip[z+1] = (1.5f-(.5f*((float)(z+1))) * f*f)*f;
-
-		f = (fsqrecip[z+2]+fsqrecip[z+4])*.5f;
-		if (z <= 22) f = (1.5f-(.5f*((float)(z+3))) * f*f)*f;
-		fsqrecip[z+3] = (1.5f-(.5f*((float)(z+3))) * f*f)*f;
-	}
-#endif
-
 		//Lookup table to save 1 divide for gline()
 	for(i=1;i<CMPRECIPSIZ;i++) cmprecip[i] = CMPPREC/(float)i;
 
@@ -4196,7 +3608,6 @@ long initvoxlap ()
 	vx5.curpow = 2.0;
 	vx5.amount = 0x70707;
 	vx5.pic = 0;
-	vx5.cliphitnum = 0;
 	vx5.flstnum = 0;
 	vx5.kv6col = 0x808080;
 	vx5.vxlmipuse = 1;
@@ -4302,7 +3713,6 @@ void doframe ()
 
 	voxsetframebuffer(i,j,k,l);
 	setcamera(&ipos,&istr,&ihei,&ifor,xres*.5,yres*.5,xres*.5);
-	setears3d(ipos.x,ipos.y,ipos.z,ifor.x,ifor.y,ifor.z,ihei.x,ihei.y,ihei.z);
 	opticast();
 
 	stopdirectdraw();
@@ -4319,97 +3729,20 @@ skipalldraw:;
 	dp.x = istr.z*.1; dp.y = fmousy*.008; dp.z = fmousx*.008;
 	dorthorotate(dp.x,dp.y,dp.z,&istr,&ihei,&ifor);
 
-		//Draw less when turning fast to increase the frame rate
-	if (!lockanginc)
-	{
-		i = 1; if (xres*yres >= 640*350) i++;
-		f = dp.x*dp.x + dp.y*dp.y + dp.z*dp.z;
-		if (f >= .01*.01)
-		{
-			i++;
-			if (f >= .08*.08)
-			{
-				i++; if (f >= .64*.64) i++;
-			}
-		}
-		vx5.anginc = (float)i;
-	}
+	ivel.x = ivel.y = ivel.z = 0;
 
-		//Move player and perform simple physics (gravity,momentum,friction)
-	f = fsynctics*12.0;
+	f = fsynctics*60.0;
 	if (keystatus[0x1e]) { ivel.x -= istr.x*f; ivel.y -= istr.y*f; ivel.z -= istr.z*f; } // A
 	if (keystatus[0x20]) { ivel.x += istr.x*f; ivel.y += istr.y*f; ivel.z += istr.z*f; } // D
 	if (keystatus[0x11]) { ivel.x += ifor.x*f; ivel.y += ifor.y*f; ivel.z += ifor.z*f; } // W
 	if (keystatus[0x1f]) { ivel.x -= ifor.x*f; ivel.y -= ifor.y*f; ivel.z -= ifor.z*f; } // S
 	if (keystatus[0x12]) { ivel.x -= ihei.x*f; ivel.y -= ihei.y*f; ivel.z -= ihei.z*f; } // E
 	if (keystatus[0x10]) { ivel.x += ihei.x*f; ivel.y += ihei.y*f; ivel.z += ihei.z*f; } // Q
-	//ivel.z += fsynctics*2.0; //Gravity (used to be *4.0)
-	f = fsynctics*64.0;
-	dp.x = ivel.x*f;
-	dp.y = ivel.y*f;
-	dp.z = ivel.z*f;
-	dp2 = ipos; clipmove(&ipos,&dp,CLIPRAD);
-	if (f != 0)
-	{
-		f = .9/f; //Friction
-		ivel.x = (ipos.x-dp2.x)*f;
-		ivel.y = (ipos.y-dp2.y)*f;
-		ivel.z = (ipos.z-dp2.z)*f;
-	}
 
-	if (vx5.clipmaxcr < CLIPRAD*.9)
-	{
-		if (vx5.clipmaxcr >= CLIPRAD*.1) //Try to push player to safety
-		{
-			if (vx5.cliphitnum > 0)
-			{
-				switch (vx5.cliphitnum)
-				{
-					case 1: dpos.x = dp2.x-vx5.cliphit[0].x;
-							  dpos.y = dp2.y-vx5.cliphit[0].y;
-							  dpos.z = dp2.z-vx5.cliphit[0].z;
-							  break;
-					case 2: dpos.x = dp2.x-(vx5.cliphit[0].x+vx5.cliphit[1].x)*.5;
-							  dpos.y = dp2.y-(vx5.cliphit[0].y+vx5.cliphit[1].y)*.5;
-							  dpos.z = dp2.z-(vx5.cliphit[0].z+vx5.cliphit[1].z)*.5;
-							  break;
-					case 3:
-						 dp.x = (vx5.cliphit[1].x-vx5.cliphit[0].x);
-						 dp.y = (vx5.cliphit[1].y-vx5.cliphit[0].y);
-						 dp.z = (vx5.cliphit[1].z-vx5.cliphit[0].z);
-						dp3.x = (vx5.cliphit[2].x-vx5.cliphit[0].x);
-						dp3.y = (vx5.cliphit[2].y-vx5.cliphit[0].y);
-						dp3.z = (vx5.cliphit[2].z-vx5.cliphit[0].z);
-						dpos.x = dp.y*dp3.z - dp.z*dp3.y;
-						dpos.y = dp.z*dp3.x - dp.x*dp3.z;
-						dpos.z = dp.x*dp3.y - dp.y*dp3.x;
-
-						  //Ugly hack making sure cross product points in right direction
-						if ((dp2.x*3-(vx5.cliphit[0].x+vx5.cliphit[1].x+vx5.cliphit[2].x))*dpos.x +
-							 (dp2.y*3-(vx5.cliphit[0].y+vx5.cliphit[1].y+vx5.cliphit[2].y))*dpos.y +
-							 (dp2.z*3-(vx5.cliphit[0].z+vx5.cliphit[1].z+vx5.cliphit[2].z))*dpos.z < 0)
-							{ dpos.x = -dpos.x; dpos.y = -dpos.y; dpos.z = -dpos.z; }
-
-						break;
-				}
-				d = dpos.x*dpos.x + dpos.y*dpos.y + dpos.z*dpos.z;
-				if (d > 0)
-				{
-					d = 1.0/sqrt(d);
-					ivel.x += dpos.x*d;
-					ivel.y += dpos.y*d;
-					ivel.z += dpos.z*d;
-				}
-			}
-		}
-		else //Out of room... squish player!
-		{
-			puts("You got squished!");
-			exit(0);
-		}
-	}
-	f = ivel.x*ivel.x + ivel.y*ivel.y + ivel.z*ivel.z; //Limit maximum velocity
-	if (f > 8.0*8.0) { f = 8.0/sqrt(f); ivel.x *= f; ivel.y *= f; ivel.z *= f; }
+	f = fsynctics*60.0;
+	ipos.x += ivel.x*f;
+	ipos.y += ivel.y*f;
+	ipos.z += ivel.z*f;
 
 	updatevxl();
 }
