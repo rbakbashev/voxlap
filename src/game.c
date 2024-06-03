@@ -1190,7 +1190,7 @@ skipalldraw:;
 	totclk = (long)(dtotclk*1000.0); fsynctics = (float)(dtotclk-odtotclk);
 
 		//Rotate player's view
-	dp.x = istr.z*.1; dp.y = fmousy*-.008; dp.z = fmousx*.008;
+	dp.x = istr.z*.1; dp.y = fmousy*.008; dp.z = fmousx*.008;
 	dorthorotate(dp.x,dp.y,dp.z,&istr,&ihei,&ifor);
 
 		//Draw less when turning fast to increase the frame rate

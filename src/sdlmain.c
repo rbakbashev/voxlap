@@ -1542,7 +1542,7 @@ static void sdlmsgloop(void)
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {
 			case SDL_KEYDOWN:
-				if (ev.key.keysym.sym < 256) {
+				if (ev.key.keysym.sym < 324) {
 					sc = keytranslation[ev.key.keysym.sym];
 					keystatus[ sc ] = 1;   // FIXME: verify this is kosher
 					ext_keystatus[ sc ] = 1|2;
@@ -1565,7 +1565,7 @@ static void sdlmsgloop(void)
 				}
 				break;
 			case SDL_KEYUP:
-				if (ev.key.keysym.sym < 256) {
+				if (ev.key.keysym.sym < 324) {
 					sc = keytranslation[ev.key.keysym.sym];
 					keystatus[ sc ] = 0;   // FIXME: verify this is kosher
 					ext_keystatus[ sc ] &= ~1; // preserve bit 2 only
