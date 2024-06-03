@@ -187,8 +187,6 @@ extern void drawpolyquad (long, long, long, long, float, float, float, float, fl
 extern void print4x6 (long, long, long, long, const char *, ...);
 extern void print6x8 (long, long, long, long, const char *, ...);
 extern void drawtile (long, long, long, long, long, long, long, long, long, long, long, long);
-extern long screencapture32bit (const char *);
-extern long surroundcapture32bit (dpoint3d *, const char *, long);
 
 	//Sprite related functions:
 extern kv6data *getkv6 (const char *);
@@ -12026,171 +12024,6 @@ fogend2:    emms
 	if (cputype&(1<<25)) drawboundcubesseinit(); else drawboundcube3dninit();
 }
 
-//------------------------ Simple PNG OUT code begins ------------------------
-FILE *pngofil;
-long pngoxplc, pngoyplc, pngoxsiz, pngoysiz;
-unsigned long pngocrc, pngoadcrc;
-
-#ifdef _MSC_VER
-
-static _inline unsigned long bswap (unsigned long a)
-{
-	_asm
-	{
-		mov eax, a
-		bswap eax
-	}
-}
-
-#endif
-
-long crctab32[256];  //SEE CRC32.C
-#define updatecrc32(c,crc) crc=(crctab32[(crc^c)&255]^(((unsigned)crc)>>8))
-#define updateadl32(c,crc) \
-{  c += (crc&0xffff); if (c   >= 65521) c   -= 65521; \
-	crc = (crc>>16)+c; if (crc >= 65521) crc -= 65521; \
-	crc = (crc<<16)+c; \
-} \
-
-void fputbytes (unsigned long v, long n)
-	{ for(;n;v>>=8,n--) { fputc(v,pngofil); updatecrc32(v,pngocrc); } }
-
-void pngoutopenfile (const char *fnam, long xsiz, long ysiz)
-{
-	long i, j, k;
-	char a[40];
-
-	pngoxsiz = xsiz; pngoysiz = ysiz; pngoxplc = pngoyplc = 0;
-	for(i=255;i>=0;i--)
-	{
-		k = i; for(j=8;j;j--) k = ((unsigned long)k>>1)^((-(k&1))&0xedb88320);
-		crctab32[i] = k;
-	}
-	pngofil = fopen(fnam,"wb");
-	*(long *)&a[0] = 0x474e5089; *(long *)&a[4] = 0x0a1a0a0d;
-	*(long *)&a[8] = 0x0d000000; *(long *)&a[12] = 0x52444849;
-	*(long *)&a[16] = bswap(xsiz); *(long *)&a[20] = bswap(ysiz);
-	*(long *)&a[24] = 0x00000208; *(long *)&a[28] = 0;
-	for(i=12,j=-1;i<29;i++) updatecrc32(a[i],j);
-	*(long *)&a[29] = bswap(j^-1);
-	fwrite(a,37,1,pngofil);
-	pngocrc = 0xffffffff; pngoadcrc = 1;
-	fputbytes(0x54414449,4); fputbytes(0x0178,2);
-}
-
-void pngoutputpixel (long rgbcol)
-{
-	long a[4];
-
-	if (!pngoxplc)
-	{
-		fputbytes(pngoyplc==pngoysiz-1,1);
-		fputbytes(((pngoxsiz*3+1)*0x10001)^0xffff0000,4);
-		fputbytes(0,1); a[0] = 0; updateadl32(a[0],pngoadcrc);
-	}
-	fputbytes(bswap(rgbcol<<8),3);
-	a[0] = (rgbcol>>16)&255; updateadl32(a[0],pngoadcrc);
-	a[0] = (rgbcol>> 8)&255; updateadl32(a[0],pngoadcrc);
-	a[0] = (rgbcol    )&255; updateadl32(a[0],pngoadcrc);
-	pngoxplc++; if (pngoxplc < pngoxsiz) return;
-	pngoxplc = 0; pngoyplc++; if (pngoyplc < pngoysiz) return;
-	fputbytes(bswap(pngoadcrc),4);
-	a[0] = bswap(pngocrc^-1); a[1] = 0; a[2] = 0x444e4549; a[3] = 0x826042ae;
-	fwrite(a,1,16,pngofil);
-	a[0] = bswap(ftell(pngofil)-(33+8)-16);
-	fseek(pngofil,33,SEEK_SET); fwrite(a,1,4,pngofil);
-	fclose(pngofil);
-}
-//------------------------- Simple PNG OUT code ends -------------------------
-
-long screencapture32bit (const char *fname)
-{
-	long p, x, y;
-
-	pngoutopenfile(fname,xres,yres);
-	p = frameplace;
-	for(y=0;y<yres;y++,p+=bytesperline)
-		for(x=0;x<xres;x++)
-			pngoutputpixel(*(long *)(p+(x<<2)));
-
-	return(0);
-}
-
-	//Captures all direction onto an un-wrapped cube
-long surroundcapture32bit (dpoint3d *pos, const char *fname, long boxsiz)
-{
-	lpoint3d hit;
-	dpoint3d d;
-	long x, y, hboxsiz, *hind, hdir;
-	float f;
-
-	//Picture layout:
-	//   ÛÛÛÛÛÛúúúú
-	//   úúúúÛÛÛÛÛÛ
-
-	f = 2.0 / (float)boxsiz; hboxsiz = (boxsiz>>1);
-	pngoutopenfile(fname,boxsiz*5,boxsiz*2);
-	for(y=-hboxsiz;y<hboxsiz;y++)
-	{
-		for(x=-hboxsiz;x<hboxsiz;x++) //(1,1,-1) - (-1,1,1)
-		{
-			d.x = -(x+.5)*f; d.y = 1; d.z = (y+.5)*f;
-			hitscan(pos,&d,&hit,&hind,&hdir);
-			if (hind) pngoutputpixel(lightvox(*hind)); else pngoutputpixel(0);
-		}
-		for(x=-hboxsiz;x<hboxsiz;x++) //(-1,1,-1) - (-1,-1,1)
-		{
-			d.x = -1; d.y = -(x+.5)*f; d.z = (y+.5)*f;
-			hitscan(pos,&d,&hit,&hind,&hdir);
-			if (hind) pngoutputpixel(lightvox(*hind)); else pngoutputpixel(0);
-		}
-		for(x=-hboxsiz;x<hboxsiz;x++) //(-1,-1,-1) - (1,-1,1)
-		{
-			d.x = (x+.5)*f; d.y = -1; d.z = (y+.5)*f;
-			hitscan(pos,&d,&hit,&hind,&hdir);
-			if (hind) pngoutputpixel(lightvox(*hind)); else pngoutputpixel(0);
-		}
-		for(x=(boxsiz<<1);x>0;x--) pngoutputpixel(0);
-	}
-	for(y=-hboxsiz;y<hboxsiz;y++)
-	{
-		for(x=(boxsiz<<1);x>0;x--) pngoutputpixel(0);
-		for(x=-hboxsiz;x<hboxsiz;x++) //(-1,-1,1) - (1,1,1)
-		{
-			d.x = (x+.5)*f; d.y = (y+.5)*f; d.z = 1;
-			hitscan(pos,&d,&hit,&hind,&hdir);
-			if (hind) pngoutputpixel(lightvox(*hind)); else pngoutputpixel(0);
-		}
-		for(x=-hboxsiz;x<hboxsiz;x++) //(1,-1,1) - (1,1,-1)
-		{
-			d.x = 1; d.y = (y+.5)*f; d.z = -(x+.5)*f;
-			hitscan(pos,&d,&hit,&hind,&hdir);
-			if (hind) pngoutputpixel(lightvox(*hind)); else pngoutputpixel(0);
-		}
-		for(x=-hboxsiz;x<hboxsiz;x++) //(1,-1,-1) - (-1,1,-1)
-		{
-			d.x = -(x+.5)*f; d.y = (y+.5)*f; d.z = -1;
-			hitscan(pos,&d,&hit,&hind,&hdir);
-			if (hind) pngoutputpixel(lightvox(*hind)); else pngoutputpixel(0);
-		}
-	}
-	return(0);
-}
-
-#if 0
-  //This doesn't speed it up and it only makes it crash on some computers :/
-static _inline void fixsse ()
-{
-	static long asm32;
-	_asm
-	{
-		stmxcsr [asm32]  ;Default is:0x1f80
-		or asm32, 0x8040 ;enable ftz&daz to prevent slow denormals!
-		ldmxcsr [asm32]
-	}
-}
-#endif
-
 void freekv6 (kv6data *kv6)
 {
 	if (kv6->lowermip) freekv6(kv6->lowermip); //NOTE: dangerous - recursive!
@@ -13115,9 +12948,6 @@ void deletesprite (long index)
 	spr[index] = spr[numsprites];
 }
 
-static point3d dummysnd[256];
-static long dummysndhead = 0, dummysndtail = 0;
-
 void doframe ()
 {
 	dpoint3d dp, dp2, dp3, dpos;
@@ -13250,74 +13080,6 @@ void doframe ()
 
 	//print4x6(0,0,0xffffff,0,"%s",dabuf);
 	print6x8((xres-(56*6))>>1,yres-8,0xc0c0c0,-1,"\"Ken-VOXLAP\" test game by Ken Silverman (advsys.net/ken)");
-
-	if (keystatus[0x3b]) //F1 (start a looping sound)
-	{
-		keystatus[0x3b] = 0;
-		i = ((dummysndhead+1)%(sizeof(dummysnd)/sizeof(dummysnd[0])));
-		if (i != dummysndtail)
-		{
-			dummysnd[dummysndhead].x = ipos.x;
-			dummysnd[dummysndhead].y = ipos.y;
-			dummysnd[dummysndhead].z = ipos.z;
-			playsound("wav/airshoot.wav",100,1.0,&dummysnd[dummysndhead],KSND_3D|KSND_LOOP);
-			dummysndhead = i;
-		}
-	}
-
-		//Use lopass filter if you can't 'see' sound.
-	fp.x = ipos.x; fp.y = ipos.y; fp.z = ipos.z;
-	for(i=dummysndtail;i!=dummysndhead;i=((i+1)%(sizeof(dummysnd)/sizeof(dummysnd[0]))))
-	{
-		if (!cansee(&dummysnd[i],&fp,&lp)) playsoundupdate(&dummysnd[i],(point3d *)-2);
-												else playsoundupdate(&dummysnd[i],(point3d *)-3);
-	}
-
-	if (keystatus[0x3c]) //F2 (stop least recently started looping sound)
-	{
-		keystatus[0x3c] = 0;
-		if (dummysndhead != dummysndtail)
-		{
-			playsoundupdate(&dummysnd[dummysndtail],(point3d *)-1);
-			dummysndtail = ((dummysndtail+1)%(sizeof(dummysnd)/sizeof(dummysnd[0])));
-		}
-	}
-
-	if (keystatus[0xb7])
-	{
-		FILE *fil;
-
-		keystatus[0xb7] = 0;
-		strcpy(tempbuf,"KVX50000.PNG");
-		while (1)
-		{
-			tempbuf[4] = ((capturecount/1000)%10)+48;
-			tempbuf[5] = ((capturecount/100)%10)+48;
-			tempbuf[6] = ((capturecount/10)%10)+48;
-			tempbuf[7] = (capturecount%10)+48;
-			if (!(fil = fopen(tempbuf,"rb"))) break;
-			fclose(fil);
-			capturecount++;
-		}
-		if (keystatus[0x1d]|keystatus[0x9d])
-		{
-			if (!surroundcapture32bit(&ipos,tempbuf,512))
-			{
-				capturecount++;
-				sprintf(message,"Surround capture: %s",tempbuf);
-				messagetimeout = totclk+4000;
-			}
-		}
-		else
-		{
-			if (!screencapture32bit(tempbuf))
-			{
-				capturecount++;
-				sprintf(message,"Screen capture: %s",tempbuf);
-				messagetimeout = totclk+4000;
-			}
-		}
-	}
 
 		//FPS counter
 	fpsometer[numframes&(FPSSIZ-1)] = (long)(fsynctics*100000); numframes++;
