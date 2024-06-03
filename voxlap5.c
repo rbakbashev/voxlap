@@ -255,7 +255,6 @@ extern int kpgetdim (const char *, int, int *, int *);
 extern int kprender (const char *, int, int, int, int, int, int, int);
 
 	//ZIP functions:
-extern void kzuninit ();
 extern int kzopen (const char *);
 extern int kzread (void *, int);
 extern int kzfilelength ();
@@ -10340,7 +10339,6 @@ long initapp (long argc, char **argv)
 void uninitapp ()
 {
 	long i;
-	kzuninit();
 	uninitvoxlap();
 }
 
@@ -11425,179 +11423,23 @@ int kprender (const char *buf, int leng, INT_PTR frameptr, int bpl,
 
 //==================== External picture interface ends =======================
 
-	//Same as: stricmp(st0,st1) except: '/' == '\'
-static int filnamcmp (const char *st0, const char *st1)
-{
-	int i;
-	char ch0, ch1;
-
-	for(i=0;st0[i];i++)
-	{
-		ch0 = st0[i]; if ((ch0 >= 'a') && (ch0 <= 'z')) ch0 -= 32;
-		ch1 = st1[i]; if ((ch1 >= 'a') && (ch1 <= 'z')) ch1 -= 32;
-		if (ch0 == '/') ch0 = '\\';
-		if (ch1 == '/') ch1 = '\\';
-		if (ch0 != ch1) return(-1);
-	}
-	if (!st1[i]) return(0);
-	return(-1);
-}
-
-//===================== ZIP decompression code begins ========================
-
-	//format: (used by kzaddstack/kzopen to cache file name&start info)
-	//[char zipnam[?]\0]
-	//[next hashindex/-1][next index/-1][zipnam index][fileoffs][fileleng][iscomp][char filnam[?]\0]
-	//[next hashindex/-1][next index/-1][zipnam index][fileoffs][fileleng][iscomp][char filnam[?]\0]
-	//...
-	//[char zipnam[?]\0]
-	//[next hashindex/-1][next index/-1][zipnam index][fileoffs][fileleng][iscomp][char filnam[?]\0]
-	//[next hashindex/-1][next index/-1][zipnam index][fileoffs][fileleng][iscomp][char filnam[?]\0]
-	//...
-#define KZHASHINITSIZE 8192
-static char *kzhashbuf = 0;
-static int kzhashead[256], kzhashpos, kzlastfnam, kzhashsiz, kzdirnamhead = -1;
-
-static int kzcalchash (const char *st)
-{
-	int i, hashind;
-	char ch;
-
-	for(i=0,hashind=0;st[i];i++)
-	{
-		ch = st[i];
-		if ((ch >= 'a') && (ch <= 'z')) ch -= 32;
-		if (ch == '/') ch = '\\';
-		hashind = (ch - hashind*3);
-	}
-	return(hashind%(sizeof(kzhashead)/sizeof(kzhashead[0])));
-}
-
-static int kzcheckhash (const char *filnam, char **zipnam, int *fileoffs, int *fileleng, char *iscomp)
-{
-	int i;
-
-	if (!kzhashbuf) return(0);
-	if (filnam[0] == '|') filnam++;
-	for(i=kzhashead[kzcalchash(filnam)];i>=0;i=(*(int *)&kzhashbuf[i]))
-		if (!filnamcmp(filnam,&kzhashbuf[i+21]))
-		{
-			(*zipnam) = &kzhashbuf[*(int *)&kzhashbuf[i+8]];
-			(*fileoffs) = *(int *)&kzhashbuf[i+12];
-			(*fileleng) = *(int *)&kzhashbuf[i+16];
-			(*iscomp) = kzhashbuf[i+20];
-			return(1);
-		}
-	return(0);
-}
-
-void kzuninit ()
-{
-	if (kzhashbuf) { free(kzhashbuf); kzhashbuf = 0; }
-	kzhashpos = kzhashsiz = 0; kzdirnamhead = -1;
-}
-
 INT_PTR kzopen (const char *filnam)
 {
-	FILE *fil;
-	int i, j, fileoffs, fileleng;
-	char tempbuf[46+260], *zipnam, iscomp;
+	kzfs.fil = fopen(filnam,"rb");
 
-	//kzfs.fil = 0;
-	if (filnam[0] != '|') //Search standalone file first
+	if (!kzfs.fil)
 	{
-		kzfs.fil = fopen(filnam,"rb");
-		if (kzfs.fil)
-		{
-			kzfs.comptyp = 0;
-			kzfs.seek0 = 0;
-			kzfs.leng = filelength(_fileno(kzfs.fil));
-			kzfs.pos = 0;
-			kzfs.i = 0;
-			return((INT_PTR)kzfs.fil);
-		}
-	}
-	if (kzcheckhash(filnam,&zipnam,&fileoffs,&fileleng,&iscomp)) //Then check mounted ZIP/GRP files
-	{
-		fil = fopen(zipnam,"rb"); if (!fil) return(0);
-		fseek(fil,fileoffs,SEEK_SET);
-		if (!iscomp) //Must be from GRP file
-		{
-			kzfs.fil = fil;
-			kzfs.comptyp = 0;
-			kzfs.seek0 = fileoffs;
-			kzfs.leng = fileleng;
-			kzfs.pos = 0;
-			kzfs.i = 0;
-			return((INT_PTR)kzfs.fil);
-		}
-		else
-		{
-			fread(tempbuf,30,1,fil);
-			if (*(int *)&tempbuf[0] != LSWAPIB(0x04034b50)) { fclose(fil); return(0); }
-			fseek(fil,SSWAPIB(*(short *)&tempbuf[26])+SSWAPIB(*(short *)&tempbuf[28]),SEEK_CUR);
-
-			kzfs.fil = fil;
-			kzfs.comptyp = SSWAPIB(*(short *)&tempbuf[8]);
-			kzfs.seek0 = ftell(fil);
-			kzfs.leng = LSWAPIB(*(int *)&tempbuf[22]);
-			kzfs.pos = 0;
-			switch(kzfs.comptyp) //Compression method
-			{
-				case 0: kzfs.i = 0; return((INT_PTR)kzfs.fil);
-				case 8:
-					if (!pnginited) { pnginited = 1; initpngtables(); }
-					kzfs.comptell = 0;
-					kzfs.compleng = LSWAPIB(*(int *)&tempbuf[18]);
-
-						//WARNING: No file in ZIP can be > 2GB-32K bytes
-					gslidew = 0x7fffffff; //Force reload at beginning
-
-					return((INT_PTR)kzfs.fil);
-				default: fclose(kzfs.fil); kzfs.fil = 0; return(0);
-			}
-		}
+		printf("file '%s' not found\n", filnam);
+		exit(1);
 	}
 
-		//Finally, check mounted dirs
-	for(i=kzdirnamhead;i>=0;i=*(int *)&kzhashbuf[i])
-	{
-		strcpy(tempbuf,&kzhashbuf[i+4]);
-		j = strlen(tempbuf);
-		if (strlen(filnam)+1+j >= sizeof(tempbuf)) continue; //don't allow long filenames to buffer overrun
-		if ((j) && (tempbuf[j-1] != '/') && (tempbuf[j-1] != '\\') && (filnam[0] != '/') && (filnam[0] != '\\'))
-#if (defined(__DOS__) || defined(_WIN32))
-			strcat(tempbuf,"\\");
-#else
-			strcat(tempbuf,"/");
-#endif
-		strcat(tempbuf,filnam);
-		kzfs.fil = fopen(tempbuf,"rb");
-		if (kzfs.fil)
-		{
-			kzfs.comptyp = 0;
-			kzfs.seek0 = 0;
-			kzfs.leng = filelength(_fileno(kzfs.fil));
-			kzfs.pos = 0;
-			kzfs.i = 0;
-			return((INT_PTR)kzfs.fil);
-		}
-	}
+	kzfs.comptyp = 0;
+	kzfs.seek0 = 0;
+	kzfs.leng = filelength(_fileno(kzfs.fil));
+	kzfs.pos = 0;
+	kzfs.i = 0;
 
-	return(0);
-}
-
-// --------------------------------------------------------------------------
-
-static char *gzbufptr;
-static void putbuf4zip (const unsigned char *buf, int uncomp0, int uncomp1)
-{
-	int i0, i1;
-		//              uncomp0 ... uncomp1
-		//  &gzbufptr[kzfs.pos] ... &gzbufptr[kzfs.endpos];
-	i0 = max(uncomp0,kzfs.pos);
-	i1 = min(uncomp1,kzfs.endpos);
-	if (i0 < i1) memcpy(&gzbufptr[i0],&buf[i0-uncomp0],i1-i0);
+	return (INT_PTR)kzfs.fil;
 }
 
 	//returns number of bytes copied
@@ -11607,194 +11449,12 @@ int kzread (void *buffer, int leng)
 
 	if ((!kzfs.fil) || (leng <= 0)) return(0);
 
-	if (kzfs.comptyp == 0)
-	{
-		if (kzfs.pos != kzfs.i) //Seek only when position changes
-			fseek(kzfs.fil,kzfs.seek0+kzfs.pos,SEEK_SET);
-		i = min(kzfs.leng-kzfs.pos,leng);
-		fread(buffer,i,1,kzfs.fil);
-		kzfs.i += i; //kzfs.i is a local copy of ftell(kzfs.fil);
-	}
-	else if (kzfs.comptyp == 8)
-	{
-		zipfilmode = 1;
+	if (kzfs.pos != kzfs.i) //Seek only when position changes
+		fseek(kzfs.fil,kzfs.seek0+kzfs.pos,SEEK_SET);
+	i = min(kzfs.leng-kzfs.pos,leng);
+	fread(buffer,i,1,kzfs.fil);
+	kzfs.i += i; //kzfs.i is a local copy of ftell(kzfs.fil);
 
-			//Initialize for putbuf4zip
-		gzbufptr = (char *)buffer; gzbufptr = &gzbufptr[-kzfs.pos];
-		kzfs.endpos = min(kzfs.pos+leng,kzfs.leng);
-		if (kzfs.endpos == kzfs.pos) return(0); //Guard against reading 0 length
-
-		if (kzfs.pos < gslidew-32768) // Must go back to start :(
-		{
-			if (kzfs.comptell) fseek(kzfs.fil,kzfs.seek0,SEEK_SET);
-
-			gslidew = 0; gslider = 16384;
-			kzfs.jmpplc = 0;
-
-				//Initialize for suckbits/peekbits/getbits
-			kzfs.comptell = min((unsigned)kzfs.compleng,sizeof(olinbuf));
-			fread(&olinbuf[0],kzfs.comptell,1,kzfs.fil);
-				//Make it re-load when there are < 32 bits left in FIFO
-			bitpos = -(((int)sizeof(olinbuf)-4)<<3);
-				//Identity: filptr + (bitpos>>3) = &olinbuf[0]
-			filptr = &olinbuf[-(bitpos>>3)];
-		}
-		else
-		{
-			i = max(gslidew-32768,0); j = gslider-16384;
-
-				//HACK: Don't unzip anything until you have to...
-				//   (keeps file pointer as low as possible)
-			if (kzfs.endpos <= gslidew) j = kzfs.endpos;
-
-				//write uncompoffs on slidebuf from: i to j
-			if (!((i^j)&32768))
-				putbuf4zip(&slidebuf[i&32767],i,j);
-			else
-			{
-				putbuf4zip(&slidebuf[i&32767],i,j&~32767);
-				putbuf4zip(slidebuf,j&~32767,j);
-			}
-
-				//HACK: Don't unzip anything until you have to...
-				//   (keeps file pointer as low as possible)
-			if (kzfs.endpos <= gslidew) goto retkzread;
-		}
-
-		switch (kzfs.jmpplc)
-		{
-			case 0: goto kzreadplc0;
-			case 1: goto kzreadplc1;
-			case 2: goto kzreadplc2;
-			case 3: goto kzreadplc3;
-		}
-kzreadplc0:;
-		do
-		{
-			bfinal = getbits(1); btype = getbits(2);
-
-#if 0
-				//Display Huffman block offsets&lengths of input file - for debugging only!
-			{
-			static int ouncomppos = 0, ocomppos = 0;
-			if (kzfs.comptell == sizeof(olinbuf)) i = 0;
-			else if (kzfs.comptell < kzfs.compleng) i = kzfs.comptell-(sizeof(olinbuf)-4);
-			else i = kzfs.comptell-(kzfs.comptell%(sizeof(olinbuf)-4));
-			i += ((char *)&filptr[bitpos>>3])-((char *)(&olinbuf[0]));
-			i = (i<<3)+(bitpos&7)-3;
-			if (gslidew) printf(" ULng:0x%08x CLng:0x%08x.%x",gslidew-ouncomppos,(i-ocomppos)>>3,((i-ocomppos)&7)<<1);
-			printf("\ntype:%d, Uoff:0x%08x Coff:0x%08x.%x",btype,gslidew,i>>3,(i&7)<<1);
-			if (bfinal)
-			{
-				printf(" ULng:0x%08x CLng:0x%08x.%x",kzfs.leng-gslidew,((kzfs.compleng<<3)-i)>>3,(((kzfs.compleng<<3)-i)&7)<<1);
-				printf("\n        Uoff:0x%08x Coff:0x%08x.0",kzfs.leng,kzfs.compleng);
-				ouncomppos = ocomppos = 0;
-			}
-			else { ouncomppos = gslidew; ocomppos = i; }
-			}
-#endif
-
-			if (btype == 0)
-			{
-				  //Raw (uncompressed)
-				suckbits((-bitpos)&7);  //Synchronize to start of next byte
-				i = getbits(16); if ((getbits(16)^i) != 0xffff) return(-1);
-				for(;i;i--)
-				{
-					if (gslidew >= gslider)
-					{
-						putbuf4zip(&slidebuf[(gslider-16384)&32767],gslider-16384,gslider); gslider += 16384;
-						if (gslider-16384 >= kzfs.endpos)
-						{
-							kzfs.jmpplc = 1; kzfs.i = i; kzfs.bfinal = bfinal;
-							goto retkzread;
-kzreadplc1:;         i = kzfs.i; bfinal = kzfs.bfinal;
-						}
-					}
-					slidebuf[(gslidew++)&32767] = (char)getbits(8);
-				}
-				continue;
-			}
-			if (btype == 3) continue;
-
-			if (btype == 1) //Fixed Huffman
-			{
-				hlit = 288; hdist = 32; i = 0;
-				for(;i<144;i++) clen[i] = 8; //Fixed bit sizes (literals)
-				for(;i<256;i++) clen[i] = 9; //Fixed bit sizes (literals)
-				for(;i<280;i++) clen[i] = 7; //Fixed bit sizes (EOI,lengths)
-				for(;i<288;i++) clen[i] = 8; //Fixed bit sizes (lengths)
-				for(;i<320;i++) clen[i] = 5; //Fixed bit sizes (distances)
-			}
-			else  //Dynamic Huffman
-			{
-				hlit = getbits(5)+257; hdist = getbits(5)+1; j = getbits(4)+4;
-				for(i=0;i<j;i++) cclen[ccind[i]] = getbits(3);
-				for(;i<19;i++) cclen[ccind[i]] = 0;
-				hufgencode(cclen,19,ibuf0,nbuf0);
-
-				j = 0; k = hlit+hdist;
-				while (j < k)
-				{
-					i = hufgetsym(ibuf0,nbuf0);
-					if (i < 16) { clen[j++] = i; continue; }
-					if (i == 16)
-						{ for(i=getbits(2)+3;i;i--) { clen[j] = clen[j-1]; j++; } }
-					else
-					{
-						if (i == 17) i = getbits(3)+3; else i = getbits(7)+11;
-						for(;i;i--) clen[j++] = 0;
-					}
-				}
-			}
-
-			hufgencode(clen,hlit,ibuf0,nbuf0);
-			qhufgencode(ibuf0,nbuf0,qhufval0,qhufbit0,LOGQHUFSIZ0);
-
-			hufgencode(&clen[hlit],hdist,ibuf1,nbuf1);
-			qhufgencode(ibuf1,nbuf1,qhufval1,qhufbit1,LOGQHUFSIZ1);
-
-			while (1)
-			{
-				if (gslidew >= gslider)
-				{
-					putbuf4zip(&slidebuf[(gslider-16384)&32767],gslider-16384,gslider); gslider += 16384;
-					if (gslider-16384 >= kzfs.endpos)
-					{
-						kzfs.jmpplc = 2; kzfs.bfinal = bfinal; goto retkzread;
-kzreadplc2:;      bfinal = kzfs.bfinal;
-					}
-				}
-
-				k = peekbits(LOGQHUFSIZ0);
-				if (qhufbit0[k]) { i = qhufval0[k]; suckbits((int)qhufbit0[k]); }
-				else i = hufgetsym(ibuf0,nbuf0);
-
-				if (i < 256) { slidebuf[(gslidew++)&32767] = (char)i; continue; }
-				if (i == 256) break;
-				i = getbits(hxbit[i+30-257][0]) + hxbit[i+30-257][1];
-
-				k = peekbits(LOGQHUFSIZ1);
-				if (qhufbit1[k]) { j = qhufval1[k]; suckbits((int)qhufbit1[k]); }
-				else j = hufgetsym(ibuf1,nbuf1);
-
-				j = getbits(hxbit[j][0]) + hxbit[j][1];
-				for(;i;i--,gslidew++) slidebuf[gslidew&32767] = slidebuf[(gslidew-j)&32767];
-			}
-		} while (!bfinal);
-
-		gslider -= 16384;
-		if (!((gslider^gslidew)&32768))
-			putbuf4zip(&slidebuf[gslider&32767],gslider,gslidew);
-		else
-		{
-			putbuf4zip(&slidebuf[gslider&32767],gslider,gslidew&~32767);
-			putbuf4zip(slidebuf,gslidew&~32767,gslidew);
-		}
-kzreadplc3:; kzfs.jmpplc = 3;
-	}
-
-retkzread:;
 	i = kzfs.pos;
 	kzfs.pos += leng; if (kzfs.pos > kzfs.leng) kzfs.pos = kzfs.leng;
 	return(kzfs.pos-i);
@@ -11816,5 +11476,3 @@ void kzclose ()
 {
 	if (kzfs.fil) { fclose(kzfs.fil); kzfs.fil = 0; }
 }
-
-//====================== ZIP decompression code ends =========================
