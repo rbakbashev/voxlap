@@ -42,6 +42,7 @@ long initapp (long argc, char **argv);
 void doframe ();
 extern void quitloop ();
 void uninitapp ();
+void evilquit (const char *);
 
 	//Video:
 typedef struct { long x, y; char c, r0, g0, b0, a0, rn, gn, bn, an; } validmodetype;

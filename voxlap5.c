@@ -295,13 +295,6 @@ extern void kzclose ();
 #endif
 #include <stdlib.h>
 
-extern char keystatus[256];
-extern void breath ();
-extern long startdirectdraw (long *, long *, long *, long *);
-extern void stopdirectdraw ();
-extern void nextpage ();
-extern void evilquit (const char *);
-
 #define VOXSIZ VSID*VSID*128
 #ifdef __cplusplus
 extern "C" {
@@ -10562,14 +10555,12 @@ skipalldraw:;
 
 		//Move player and perform simple physics (gravity,momentum,friction)
 	f = fsynctics*12.0;
-	if (keystatus[0x2a]) f *= .0625;
-	if (keystatus[0x36]) f *= 16.0;
-	if (keystatus[0xcb]) { ivel.x -= istr.x*f; ivel.y -= istr.y*f; ivel.z -= istr.z*f; }
-	if (keystatus[0xcd]) { ivel.x += istr.x*f; ivel.y += istr.y*f; ivel.z += istr.z*f; }
-	if (keystatus[0xc8]) { ivel.x += ifor.x*f; ivel.y += ifor.y*f; ivel.z += ifor.z*f; }
-	if (keystatus[0xd0]) { ivel.x -= ifor.x*f; ivel.y -= ifor.y*f; ivel.z -= ifor.z*f; }
-	if (keystatus[0x9d]) { ivel.x -= ihei.x*f; ivel.y -= ihei.y*f; ivel.z -= ihei.z*f; } //Rt.Ctrl
-	if (keystatus[0x52]) { ivel.x += ihei.x*f; ivel.y += ihei.y*f; ivel.z += ihei.z*f; } //KP0
+	if (keystatus[0x1e]) { ivel.x -= istr.x*f; ivel.y -= istr.y*f; ivel.z -= istr.z*f; } // A
+	if (keystatus[0x20]) { ivel.x += istr.x*f; ivel.y += istr.y*f; ivel.z += istr.z*f; } // D
+	if (keystatus[0x11]) { ivel.x += ifor.x*f; ivel.y += ifor.y*f; ivel.z += ifor.z*f; } // W
+	if (keystatus[0x1f]) { ivel.x -= ifor.x*f; ivel.y -= ifor.y*f; ivel.z -= ifor.z*f; } // S
+	if (keystatus[0x12]) { ivel.x -= ihei.x*f; ivel.y -= ihei.y*f; ivel.z -= ihei.z*f; } // E
+	if (keystatus[0x10]) { ivel.x += ihei.x*f; ivel.y += ihei.y*f; ivel.z += ihei.z*f; } // Q
 	//ivel.z += fsynctics*2.0; //Gravity (used to be *4.0)
 	f = fsynctics*64.0;
 	dp.x = ivel.x*f;
