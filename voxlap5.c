@@ -207,7 +207,6 @@ extern void axisrotate (point3d *, point3d *, float);
 extern void slerp (point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, float);
 extern long cansee (point3d *, point3d *, lpoint3d *);
 extern void hitscan (dpoint3d *, dpoint3d *, lpoint3d *, long **, long *);
-extern void sprhitscan (dpoint3d *, dpoint3d *, vx5sprite *, lpoint3d *, kv6voxtype **, float *vsc);
 extern double findmaxcr (double, double, double, double);
 extern void clipmove (dpoint3d *, dpoint3d *, double);
 extern long triscan (point3d *, point3d *, point3d *, point3d *, lpoint3d *);
@@ -4542,155 +4541,6 @@ void hitscan (dpoint3d *p, dpoint3d *d, lpoint3d *h, long **ind, long *dir)
 			}
 		}
 	}
-}
-
-	// p0: start position
-	// v0: direction
-	//spr: pointer of sprite to test collision with
-	//  h: coordinate of voxel hit in sprite coordinates (if any)
-	//ind: pointer to voxel hit (kv6voxtype) (0 if none hit)
-	//vsc:  input: max multiple/fraction of v0's length to scan (1.0 for |v0|)
-	//     output: multiple/fraction of v0's length of hit point
-void sprhitscan (dpoint3d *p0, dpoint3d *v0, vx5sprite *spr, lpoint3d *h, kv6voxtype **ind, float *vsc)
-{
-	kv6voxtype *vx[4];
-	kv6data *kv;
-	point3d t, u, v;
-	lpoint3d a, d, p, q;
-	float f, g;
-	long i, x, y, xup, ix0, ix1;
-
-	(*ind) = 0;
-	if (spr->flags&2)
-	{
-		kfatype *kf = spr->kfaptr;
-			//This sets the sprite pointer to be the parent sprite (voxnum
-			//   of the main sprite is invalid for KFA sprites!)
-		spr = &kf->spr[kf->hingesort[(kf->numhin)-1]];
-	}
-	kv = spr->voxnum; if (!kv) return;
-
-		//d transformed to spr space (0,0,0,kv->xsiz,kv->ysiz,kv->zsiz)
-	v.x = v0->x*spr->s.x + v0->y*spr->s.y + v0->z*spr->s.z;
-	v.y = v0->x*spr->h.x + v0->y*spr->h.y + v0->z*spr->h.z;
-	v.z = v0->x*spr->f.x + v0->y*spr->f.y + v0->z*spr->f.z;
-
-		//p transformed to spr space (0,0,0,kv->xsiz,kv->ysiz,kv->zsiz)
-	t.x = p0->x-spr->p.x;
-	t.y = p0->y-spr->p.y;
-	t.z = p0->z-spr->p.z;
-	u.x = t.x*spr->s.x + t.y*spr->s.y + t.z*spr->s.z;
-	u.y = t.x*spr->h.x + t.y*spr->h.y + t.z*spr->h.z;
-	u.z = t.x*spr->f.x + t.y*spr->f.y + t.z*spr->f.z;
-	u.x /= (spr->s.x*spr->s.x + spr->s.y*spr->s.y + spr->s.z*spr->s.z);
-	u.y /= (spr->h.x*spr->h.x + spr->h.y*spr->h.y + spr->h.z*spr->h.z);
-	u.z /= (spr->f.x*spr->f.x + spr->f.y*spr->f.y + spr->f.z*spr->f.z);
-	u.x += kv->xpiv; u.y += kv->ypiv; u.z += kv->zpiv;
-
-	ix0 = max(vx5.xplanemin,0);
-	ix1 = min(vx5.xplanemax,kv->xsiz);
-
-		//Increment ray until it hits bounding box
-		// (ix0,0,0,ix1-1ulp,kv->ysiz-1ulp,kv->zsiz-1ulp)
-	g = (float)ix0;
-	t.x = (float)ix1;      (*(long *)&t.x)--;
-	t.y = (float)kv->ysiz; (*(long *)&t.y)--;
-	t.z = (float)kv->zsiz; (*(long *)&t.z)--;
-		  if (u.x <   g) { if (v.x <= 0) return; f = (  g-u.x)/v.x; u.x =   g; u.y += v.y*f; u.z += v.z*f; }
-	else if (u.x > t.x) { if (v.x >= 0) return; f = (t.x-u.x)/v.x; u.x = t.x; u.y += v.y*f; u.z += v.z*f; }
-		  if (u.y <   0) { if (v.y <= 0) return; f = (  0-u.y)/v.y; u.y =   0; u.x += v.x*f; u.z += v.z*f; }
-	else if (u.y > t.y) { if (v.y >= 0) return; f = (t.y-u.y)/v.y; u.y = t.y; u.x += v.x*f; u.z += v.z*f; }
-		  if (u.z <   0) { if (v.z <= 0) return; f = (  0-u.z)/v.z; u.z =   0; u.x += v.x*f; u.y += v.y*f; }
-	else if (u.z > t.z) { if (v.z >= 0) return; f = (t.z-u.z)/v.z; u.z = t.z; u.x += v.x*f; u.y += v.y*f; }
-
-	ix1 -= ix0;
-
-	g = 262144.0 / sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-
-		//Note: (a.x,a.y,a.z) MUST be rounded towards -inf
-	ftol(u.x-.5,&a.x); if ((unsigned long)(a.x-ix0) >= ix1) return;
-	ftol(u.y-.5,&a.y); if ((unsigned long)a.y >= kv->ysiz) return;
-	ftol(u.z-.5,&a.z); if ((unsigned long)a.z >= kv->zsiz) return;
-	if (*(long *)&v.x < 0) { d.x = -1; u.x -= a.x;      v.x *= -g; }
-							else { d.x =  1; u.x = a.x+1-u.x; v.x *=  g; }
-	if (*(long *)&v.y < 0) { d.y = -1; u.y -= a.y;      v.y *= -g; }
-							else { d.y =  1; u.y = a.y+1-u.y; v.y *=  g; }
-	if (*(long *)&v.z < 0) { d.z = -1; u.z -= a.z;      v.z *= -g; }
-							else { d.z =  1; u.z = a.z+1-u.z; v.z *=  g; }
-	ftol(u.x*v.z - u.z*v.x,&p.x); ftol(v.x,&q.x);
-	ftol(u.y*v.z - u.z*v.y,&p.y); ftol(v.y,&q.y);
-	ftol(u.y*v.x - u.x*v.y,&p.z); ftol(v.z,&q.z);
-
-		//Check if voxel at: (a.x,a.y,a.z) is solid
-	vx[0] = kv->vox;
-	for(x=0;x<a.x;x++) vx[0] += kv->xlen[x];
-	vx[1] = vx[0]; xup = x*kv->ysiz;
-	for(y=0;y<a.y;y++) vx[1] += kv->ylen[xup+y];
-	vx[2] = vx[1]; vx[3] = &vx[1][kv->ylen[xup+y]];
-
-	while (1)
-	{
-		//vs = kv->vox; //Brute force: remove all vx[?] code to enable this
-		//for(x=0;x<a.x;x++) vs += kv->xlen[x];
-		//for(y=0;y<a.y;y++) vs += kv->ylen[x*kv->ysiz+y];
-		//for(ve=&vs[kv->ylen[x+y]];vs<ve;vs++) if (vs->z == a.z) break;
-
-			//Check if voxel at: (a.x,a.y,a.z) is solid
-		if (vx[1] < vx[3])
-		{
-			while ((a.z < vx[2]->z) && (vx[2] > vx[1]  )) vx[2]--;
-			while ((a.z > vx[2]->z) && (vx[2] < vx[3]-1)) vx[2]++;
-			if (a.z == vx[2]->z) break;
-		}
-
-		if ((p.x|p.y) >= 0)
-		{
-			a.z += d.z; if ((unsigned long)a.z >= kv->zsiz) return;
-			p.x -= q.x; p.y -= q.y;
-		}
-		else if (p.z < 0)
-		{
-			a.y += d.y; if ((unsigned long)a.y >= kv->ysiz) return;
-			p.y += q.z; p.z += q.x;
-
-			if (a.y < y) { y--; vx[1] -= kv->ylen[xup+y];      }
-			if (a.y > y) {      vx[1] += kv->ylen[xup+y]; y++; }
-			vx[2] = vx[1]; vx[3] = &vx[1][kv->ylen[xup+y]];
-		}
-		else
-		{
-			a.x += d.x; if ((unsigned long)(a.x-ix0) >= ix1) return;
-			p.x += q.z; p.z -= q.y;
-
-			if (a.x < x) { x--; vx[0] -= kv->xlen[x];      xup -= kv->ysiz; }
-			if (a.x > x) {      vx[0] += kv->xlen[x]; x++; xup += kv->ysiz; }
-			if ((a.y<<1) < kv->ysiz) //Start y-slice search from closer side
-			{
-				vx[1] = vx[0];
-				for(y=0;y<a.y;y++) vx[1] += kv->ylen[xup+y];
-			}
-			else
-			{
-				vx[1] = &vx[0][kv->xlen[x]];
-				for(y=kv->ysiz;y>a.y;y--) vx[1] -= kv->ylen[xup+y-1];
-			}
-			vx[2] = vx[1]; vx[3] = &vx[1][kv->ylen[xup+y]];
-		}
-	}
-
-		//given: a = kv6 coordinate, find: v = vxl coordinate
-	u.x = (float)a.x-kv->xpiv;
-	u.y = (float)a.y-kv->ypiv;
-	u.z = (float)a.z-kv->zpiv;
-	v.x = u.x*spr->s.x + u.y*spr->h.x + u.z*spr->f.x + spr->p.x;
-	v.y = u.x*spr->s.y + u.y*spr->h.y + u.z*spr->f.y + spr->p.y;
-	v.z = u.x*spr->s.z + u.y*spr->h.z + u.z*spr->f.z + spr->p.z;
-
-		//Stupid dot product stuff...
-	f = ((v.x-p0->x)*v0->x + (v.y-p0->y)*v0->y + (v.z-p0->z)*v0->z) /
-		  (v0->x*v0->x + v0->y*v0->y + v0->z*v0->z);
-	if (f >= (*vsc)) return;
-	{ (*vsc) = f; (*h) = a; (*ind) = vx[2]; (*vsc) = f; }
 }
 
 unsigned long calcglobalmass ()
@@ -11888,10 +11738,6 @@ long initvoxlap ()
 
 // ----- GAME.C code begins
 
-	//NUMSECRETS:actual num,1:1,2:1,4:2,8:5,16:8,32:14,64:26,128:49,256:87
-	//512:168,1024:293,2048:480,4096:711,8192:931
-#define NUMSECRETS 8
-
 #define HITWALL "wav/quikdrop.wav"
 #define BLOWUP "wav/blowup.wav"
 #define DEBRIS "wav/debris.wav"
@@ -11990,107 +11836,6 @@ void findrandomspot (long *x, long *y, long *z)
 	} while (((*z) < 0) && (cnt > 0));
 }
 
-	//Returns 0 if any voxel inside (vx-x)ý+(vy-y)ý+(vz-z)ý < rý is solid
-	//   NOTE: code uses really cool & optimized algorithm!
-long issphereempty (long x, long y, long z, long r)
-{
-	long xx, yy, zz, k, r2, nr, z2;
-
-	if (r <= 0) return(1);
-	if (anyvoxelsolid(x,y,z-r+1,z+r)) return(0);
-	r2 = r*r; nr = r2;
-	for(yy=1;yy<r;yy++)
-	{
-		nr += 1-(yy<<1); k = nr; zz = r; z2 = r2;
-		while (z2 >= k) { z2 += 1-(zz<<1); zz--; }
-		if (anyvoxelsolid(x-yy,y,z-zz,z+zz+1)) return(0);
-		if (anyvoxelsolid(x+yy,y,z-zz,z+zz+1)) return(0);
-		if (anyvoxelsolid(x,y-yy,z-zz,z+zz+1)) return(0);
-		if (anyvoxelsolid(x,y+yy,z-zz,z+zz+1)) return(0);
-		for(xx=1;xx<yy;xx++)
-		{
-			k += 1-(xx<<1); if (k <= 0) break;
-			while (z2 >= k) { z2 += 1-(zz<<1); zz--; }
-			if (zz < 0) break;
-			if (anyvoxelsolid(x-xx,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x+xx,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x-yy,y-xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x+yy,y-xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x-yy,y+xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x+yy,y+xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x-xx,y+yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x+xx,y+yy,z-zz,z+zz+1)) return(0);
-		}
-		k += 1-(xx<<1);
-		if (k > 0)
-		{
-			while (z2 >= k) { z2 += 1-(zz<<1); zz--; }
-			if (anyvoxelsolid(x-yy,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x-yy,y+yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x+yy,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelsolid(x+yy,y+yy,z-zz,z+zz+1)) return(0);
-		}
-	}
-	return(1);
-}
-
-	//Returns 0 if any voxel inside (vx-x)ý+(vy-y)ý+(vz-z)ý < rý is empty
-	//   NOTE: code uses really cool & optimized algorithm!
-long isspheresolid (long x, long y, long z, long r)
-{
-	long xx, yy, zz, k, r2, nr, z2;
-
-	if (r <= 0) return(0);
-	if (anyvoxelempty(x,y,z-r+1,z+r)) return(0);
-	r2 = r*r; nr = r2;
-	for(yy=1;yy<r;yy++)
-	{
-		nr += 1-(yy<<1); k = nr; zz = r; z2 = r2;
-		while (z2 >= k) { z2 += 1-(zz<<1); zz--; }
-		if (anyvoxelempty(x-yy,y,z-zz,z+zz+1)) return(0);
-		if (anyvoxelempty(x+yy,y,z-zz,z+zz+1)) return(0);
-		if (anyvoxelempty(x,y-yy,z-zz,z+zz+1)) return(0);
-		if (anyvoxelempty(x,y+yy,z-zz,z+zz+1)) return(0);
-		for(xx=1;xx<yy;xx++)
-		{
-			k += 1-(xx<<1); if (k <= 0) break;
-			while (z2 >= k) { z2 += 1-(zz<<1); zz--; }
-			if (zz < 0) break;
-			if (anyvoxelempty(x-xx,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x+xx,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x-yy,y-xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x+yy,y-xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x-yy,y+xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x+yy,y+xx,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x-xx,y+yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x+xx,y+yy,z-zz,z+zz+1)) return(0);
-		}
-		k += 1-(xx<<1);
-		if (k > 0)
-		{
-			while (z2 >= k) { z2 += 1-(zz<<1); zz--; }
-			if (anyvoxelempty(x-yy,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x-yy,y+yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x+yy,y-yy,z-zz,z+zz+1)) return(0);
-			if (anyvoxelempty(x+yy,y+yy,z-zz,z+zz+1)) return(0);
-		}
-	}
-	return(1);
-}
-
-long groucol[9] = {0x506050,0x605848,0x705040,0x804838,0x704030,0x603828,
-	0x503020,0x402818,0x302010,};
-long mycolfunc (lpoint3d *p)
-{
-	long i, j;
-	j = groucol[(p->z>>5)+1]; i = groucol[p->z>>5];
-	i = ((((((j&0xff00ff)-(i&0xff00ff))*(p->z&31))>>5)+i)&0xff00ff) +
-		 ((((((j&0x00ff00)-(i&0x00ff00))*(p->z&31))>>5)+i)&0x00ff00);
-	i += (labs((p->x&31)-16)<<16)+(labs((p->y&31)-16)<<8)+labs((p->z&31)-16);
-	j = rand(); i += (j&7) + ((j&0x70)<<4) + ((j&0x700)<<8);
-	return(i+0x80000000);
-}
-
 	//Heightmap for bottom
 unsigned char bothei[32*32], botheimin;
 long botcol[32*32];
@@ -12127,92 +11872,6 @@ void botinit ()
 			bothei[i] = (unsigned char)f;
 			if (bothei[i] < botheimin) botheimin = bothei[i];
 		}
-}
-
-#define EXTRASLICECOVER 1
-
-void drawspritebendx (vx5sprite *spr, float bendang, long stepsiz)
-{
-	vx5sprite tempspr;
-	float f, g, h, c, s;
-	long i, omin, omax;
-
-	omin = vx5.xplanemin; omax = vx5.xplanemax; tempspr = *spr;
-	h = 1.f / ((float)(tempspr.voxnum->xsiz)); bendang *= h;
-	g = (float)stepsiz*.5 - tempspr.voxnum->xpiv;
-	h *= (float)(tempspr.voxnum->xsiz - tempspr.voxnum->xpiv)*.5;
-	for(i=0;i<tempspr.voxnum->xsiz;i+=stepsiz)
-	{
-		vx5.xplanemin = i; vx5.xplanemax = i+stepsiz+EXTRASLICECOVER;
-		f = (float)i + g;
-		fcossin(f*bendang,&c,&s);
-		tempspr.s.x = spr->s.x*c - spr->h.x*s;
-		tempspr.s.y = spr->s.y*c - spr->h.y*s;
-		tempspr.s.z = spr->s.z*c - spr->h.z*s;
-		tempspr.h.x = spr->s.x*s + spr->h.x*c;
-		tempspr.h.y = spr->s.y*s + spr->h.y*c;
-		tempspr.h.z = spr->s.z*s + spr->h.z*c; f *= h;
-		tempspr.p.x = (spr->s.x-tempspr.s.x)*f + spr->p.x;
-		tempspr.p.y = (spr->s.y-tempspr.s.y)*f + spr->p.y;
-		tempspr.p.z = (spr->s.z-tempspr.s.z)*f + spr->p.z;
-		drawsprite(&tempspr);
-	}
-	vx5.xplanemin = omin; vx5.xplanemax = omax;
-}
-
-void drawspritebendy (vx5sprite *spr, float bendang, long stepsiz)
-{
-	vx5sprite tempspr;
-	float f, g, h, c, s;
-	long i, omin, omax;
-
-	omin = vx5.xplanemin; omax = vx5.xplanemax; tempspr = *spr;
-	h = 1.f / ((float)(tempspr.voxnum->xsiz)); bendang *= h;
-	g = (float)stepsiz*.5 - tempspr.voxnum->xpiv;
-	h *= (float)(tempspr.voxnum->xsiz - tempspr.voxnum->xpiv)*.5;
-	for(i=0;i<tempspr.voxnum->xsiz;i+=stepsiz)
-	{
-		vx5.xplanemin = i; vx5.xplanemax = i+stepsiz+EXTRASLICECOVER;
-		f = (float)i + g;
-		fcossin(f*bendang,&c,&s);
-		tempspr.s.x = spr->s.x*c - spr->f.x*s;
-		tempspr.s.y = spr->s.y*c - spr->f.y*s;
-		tempspr.s.z = spr->s.z*c - spr->f.z*s;
-		tempspr.f.x = spr->s.x*s + spr->f.x*c;
-		tempspr.f.y = spr->s.y*s + spr->f.y*c;
-		tempspr.f.z = spr->s.z*s + spr->f.z*c; f *= h;
-		tempspr.p.x = (spr->s.x-tempspr.s.x)*f + spr->p.x;
-		tempspr.p.y = (spr->s.y-tempspr.s.y)*f + spr->p.y;
-		tempspr.p.z = (spr->s.z-tempspr.s.z)*f + spr->p.z;
-		drawsprite(&tempspr);
-	}
-	vx5.xplanemin = omin; vx5.xplanemax = omax;
-}
-
-void drawspritetwist (vx5sprite *spr, float twistang, long stepsiz)
-{
-	vx5sprite tempspr;
-	float g, h, c, s;
-	long i, omin, omax;
-
-	omin = vx5.xplanemin; omax = vx5.xplanemax; tempspr = *spr;
-
-	h = 1.f / ((float)(tempspr.voxnum->xsiz)); twistang *= h;
-	g = (float)stepsiz*.5 - tempspr.voxnum->xpiv;
-	for(i=0;i<tempspr.voxnum->xsiz;i+=stepsiz)
-	{
-		vx5.xplanemin = i; vx5.xplanemax = i+stepsiz+EXTRASLICECOVER;
-		fcossin(((float)i + g)*twistang,&c,&s);
-		tempspr.h.x = spr->h.x*c - spr->f.x*s;
-		tempspr.h.y = spr->h.y*c - spr->f.y*s;
-		tempspr.h.z = spr->h.z*c - spr->f.z*s;
-		tempspr.f.x = spr->h.x*s + spr->f.x*c;
-		tempspr.f.y = spr->h.y*s + spr->f.y*c;
-		tempspr.f.z = spr->h.z*s + spr->f.z*c;
-		drawsprite(&tempspr);
-	}
-
-	vx5.xplanemin = omin; vx5.xplanemax = omax;
 }
 
 long initmap ()
@@ -12317,28 +11976,6 @@ long initmap ()
 
 			numsprites++;
 		}
-
-	for(i=0;i<NUMSECRETS;i++) //Put some random secrets underground
-	{
-		lp.x = (rand()&(VSID-1));
-		lp.y = (rand()&(VSID-1));
-		lp.z = (rand()&255);
-		if (!isspheresolid(lp.x,lp.y,lp.z,20)) continue;
-
-		vx5.colfunc = manycolfunc; setsphere(&lp,16,-1);
-
-		memset(&spr[numsprites],0,sizeof(spritetype));
-		spr[numsprites].voxnum = kv6[JOYSTICK];
-		spr[numsprites].p.x = lp.x; spr[numsprites].p.y = lp.y; spr[numsprites].p.z = lp.z;
-		spr[numsprites].s.x = spr[numsprites].h.y = spr[numsprites].f.z = 0.5;
-		spr[numsprites].flags = 0;
-		numsprites++;
-
-			//Put a hint on the surface
-		for(lp.z-=20;lp.z>0;lp.z--)
-			if (!isvoxelsolid(lp.x,lp.y,lp.z)) break;
-		if ((k = getcube(lp.x,lp.y,lp.z+1))&~1) *(long *)k = 0x8000ffff;
-	}
 
 	vx5.kv6mipfactor = 128;
 
@@ -12456,14 +12093,6 @@ void uninitapp ()
 	if (numb[0].f) { free((void *)numb[0].f); numb[0].f = 0; }
 	kzuninit();
 	uninitvoxlap();
-}
-
-void deletesprite (long index)
-{
-	numsprites--;
-	playsoundupdate(&spr[index].p,(point3d *)0);
-	playsoundupdate(&spr[numsprites].p,&spr[index].p);
-	spr[index] = spr[numsprites];
 }
 
 void doframe ()
