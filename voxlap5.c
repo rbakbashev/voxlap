@@ -68,28 +68,7 @@ typedef struct kv6data
 	unsigned short *ylen; //xsiz*ysiz*sizeof(short)
 } kv6data;
 
-typedef struct
-{
-	long parent;      //index to parent sprite (-1=none)
-	point3d p[2];     //"velcro" point of each object
-	point3d v[2];     //axis of rotation for each object
-	short vmin, vmax; //min value / max value
-	char htype, filler[7];
-} hingetype;
-
 typedef struct { long tim, frm; } seqtyp;
-
-typedef struct
-{
-	long numspr, numhin, numfrm, seqnum;
-	long namoff;
-	kv6data *basekv6;      //Points to original unconnected KV6 (maybe helpful?)
-	struct vx5sprite *spr; //[numspr]
-	hingetype *hinge;      //[numhin]
-	long *hingesort;       //[numhin]
-	short *frmval;         //[numfrm][numhin]
-	seqtyp *seq;           //[seqnum]
-} kfatype;
 
 	//Notice that I aligned each point3d on a 16-byte boundary. This will be
 	//   helpful when I get around to implementing SSE instructions someday...
@@ -103,7 +82,6 @@ typedef struct vx5sprite
 	static union
 	{
 		kv6data *voxnum; //pointer to KV6 voxel data (bit 1 of flags = 0)
-		kfatype *kfaptr; //pointer to KFA animation  (bit 1 of flags = 1)
 	};
 	static union { point3d h, y; }; //kv6data.ysiz direction in VXL coordinates
 	long kfatim;        //time (in milliseconds) of KFA animation
@@ -130,9 +108,6 @@ typedef struct //(68 bytes)
 	//Lighting variables: (used by updatelighting)
 #define MAXLIGHTS 256
 typedef struct { point3d p; float r2, sc; } lightsrctype;
-
-	//Used by setspans/meltspans. Ordered this way to allow sorting as longs!
-typedef struct { char z1, z0, x, y; } vspans;
 
 #pragma pack(pop)
 
@@ -211,9 +186,6 @@ extern void drawpolyquad (long, long, long, long, float, float, float, float, fl
 
 	//Sprite related functions:
 extern void freekv6 (kv6data *kv6);
-extern char *getkfilname (long);
-extern long meltsphere (vx5sprite *, lpoint3d *, long);
-extern long meltspans (vx5sprite *, vspans *, long, lpoint3d *);
 
 	//Physics helper functions:
 extern void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
@@ -237,7 +209,6 @@ extern void setcylinder (lpoint3d *, lpoint3d *, long, long, long);
 extern void setrect (lpoint3d *, lpoint3d *, long);
 extern void settri (point3d *, point3d *, point3d *, long);
 extern void setsector (point3d *, long *, long, float, long, long);
-extern void setspans (vspans *, long, lpoint3d *, long);
 extern void setheightmap (const unsigned char *, long, long, long, long, long, long, long);
 extern void setkv6 (vx5sprite *, long);
 
@@ -5154,51 +5125,6 @@ void setrect (lpoint3d *hit, lpoint3d *hit2, long dacol)
 	updatebbox(vx5.minx,vx5.miny,vx5.minz,vx5.maxx,vx5.maxy,vx5.maxz,dacol);
 }
 
-	//Does CSG using pre-sorted spanlist
-void setspans (vspans *lst, long lstnum, lpoint3d *offs, long dacol)
-{
-	void (*modslab)(long *, long, long);
-	long i, j, x, y, z0, z1, *lptr;
-	char ox, oy;
-
-	if (lstnum <= 0) return;
-	if (dacol == -1) modslab = delslab; else modslab = insslab;
-	vx5.minx = vx5.maxx = ((long)lst[0].x)+offs->x;
-	vx5.miny = ((long)lst[       0].y)+offs->y;
-	vx5.maxy = ((long)lst[lstnum-1].y)+offs->y+1;
-	vx5.minz = vx5.maxz = ((long)lst[0].z0)+offs->z;
-
-	i = 0; goto in2setlist;
-	do
-	{
-		if ((ox != lst[i].x) || (oy != lst[i].y))
-		{
-in2setlist:;
-			ox = lst[i].x; oy = lst[i].y;
-			x = ((long)lst[i].x)+offs->x;
-			y = ((long)lst[i].y)+offs->y;
-				  if (x < vx5.minx) vx5.minx = x;
-			else if (x > vx5.maxx) vx5.maxx = x;
-			lptr = scum2(x,y);
-		}
-		if ((x|y)&(~(VSID-1))) { i++; continue; }
-		z0 = ((long)lst[i].z0)+offs->z;   if (z0 < 0) z0 = 0;
-		z1 = ((long)lst[i].z1)+offs->z+1; if (z1 > MAXZDIM) z1 = MAXZDIM;
-		if (z0 < vx5.minz) vx5.minz = z0;
-		if (z1 > vx5.maxz) vx5.maxz = z1;
-		modslab(lptr,z0,z1);
-		i++;
-	} while (i < lstnum);
-	vx5.maxx++; vx5.maxz++;
-	if (vx5.minx < 0) vx5.minx = 0;
-	if (vx5.miny < 0) vx5.miny = 0;
-	if (vx5.maxx > VSID) vx5.maxx = VSID;
-	if (vx5.maxy > VSID) vx5.maxy = VSID;
-
-	scum2finish();
-	updatebbox(vx5.minx,vx5.miny,vx5.minz,vx5.maxx,vx5.maxy,vx5.maxz,dacol);
-}
-
 void setheightmap (const unsigned char *hptr, long hpitch, long hxdim, long hydim,
 						 long x0, long y0, long x1, long y1)
 {
@@ -6542,65 +6468,6 @@ long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 	return(1);
 }
 
-//--------------------------  Name hash code begins --------------------------
-
-	//khashbuf format: (used by getkv6/getkfa to avoid duplicate loads)
-	//[long index to next hash or -1][pointer to struct][char type]string[\0]
-	//[long index to next hash or -1][pointer to struct][chat type]string[\0]
-	//...
-	//type:0 = kv6data
-	//type:1 = kfatype
-#define KHASHINITSIZE 8192
-static char *khashbuf = 0;
-static long khashead[256], khashpos = 0, khashsiz = 0;
-
-char *getkfilname (long namoff) { return(&khashbuf[namoff]); }
-
-	//Returns: 0,retptr=-1: Error! (bad filename or out of memory)
-	//         0,retptr>=0: Not in hash; new name allocated, valid index
-	//         1,retptr>=0: Already in hash, valid index
-	//   Uses a 256-entry hash to compare names very quickly.
-static long inkhash (const char *filnam, long *retind)
-{
-	long i, j, hashind;
-
-	(*retind) = -1;
-
-	if (!filnam) return(0);
-	j = strlen(filnam); if (!j) return(0);
-	j += 10;
-	if (khashpos+j > khashsiz) //Make sure string fits in khashbuf
-	{
-		i = khashsiz; do { i <<= 1; } while (khashpos+j > i);
-		if (!(khashbuf = (char *)realloc(khashbuf,i))) return(0);
-		khashsiz = i;
-	}
-
-		//Copy filename to avoid destroying original string
-		//Also, calculate hash index (which hopefully is uniformly random :)
-	strcpy(&khashbuf[khashpos+9],filnam);
-	for(i=khashpos+9,hashind=0;khashbuf[i];i++)
-	{
-		if ((khashbuf[i] >= 'a') && (khashbuf[i] <= 'z')) khashbuf[i] -= 32;
-		if (khashbuf[i] == '/') khashbuf[i] = '\\';
-		hashind = (khashbuf[i] - hashind*3);
-	}
-	hashind %= (sizeof(khashead)/sizeof(khashead[0]));
-
-		//Find if string is already in hash...
-	for(i=khashead[hashind];i>=0;i=(*(long *)&khashbuf[i]))
-		if (!strcmp(&khashbuf[i+9],&khashbuf[khashpos+9]))
-			{ (*retind) = i; return(1); } //Early out: already in hash
-
-	(*retind) = khashpos;
-	*(long *)&khashbuf[khashpos] = khashead[hashind];
-	*(long *)&khashbuf[khashpos+4] = 0; //Set to 0 just in case load fails
-	khashead[hashind] = khashpos; khashpos += j;
-	return(0);
-}
-
-//-------------------------- KV6 sprite code begins --------------------------
-
 //EQUIVEC code begins -----------------------------------------------------
 point3d univec[256];
 __declspec(align(8)) short iunivec[256][4];
@@ -6895,32 +6762,6 @@ static char *stripdir (char *filnam)
 	for(i=0,j=-1;filnam[i];i++)
 		if ((filnam[i] == '/') || (filnam[i] == '\\')) j = i;
 	return(&filnam[j+1]);
-}
-
-static void kfasorthinge (hingetype *h, long nh, long *hsort)
-{
-	long i, j, n;
-
-		//First pass: stick hinges with parent=-1 at end
-	n = nh; j = 0;
-	for(i=n-1;i>=0;i--)
-	{
-		if (h[i].parent < 0) hsort[--n] = i;
-							 else hsort[j++] = i;
-	}
-		//Finish accumulation (n*log(n) if tree is perfectly balanced)
-	while (n > 0)
-	{
-		i--; if (i < 0) i = n-1;
-		j = hsort[i];
-		if (h[h[j].parent].parent < 0)
-		{
-			h[j].parent = -2-h[j].parent; n--;
-			hsort[i] = hsort[n]; hsort[n] = j;
-		}
-	}
-		//Restore parents to original values
-	for(i=nh-1;i>=0;i--) h[i].parent = -2-h[i].parent;
 }
 
 	//Given vector a, returns b&c that makes (a,b,c) orthonormal
@@ -7346,250 +7187,6 @@ freezesprcont:;
 }
 
 #endif
-
-	//Sprite structure is already allocated
-	//kv6, vox, xlen, ylen are all malloced in here!
-long meltsphere (vx5sprite *spr, lpoint3d *hit, long hitrad)
-{
-	long i, j, x, y, z, xs, ys, zs, xe, ye, ze, sq, z0, z1;
-	long oxvoxs, oyvoxs, numvoxs, cx, cy, cz, cw;
-	float f, ff;
-	kv6data *kv;
-	kv6voxtype *voxptr;
-	unsigned long *xlenptr;
-	unsigned short *ylenptr;
-
-	xs = max(hit->x-hitrad,0); xe = min(hit->x+hitrad,VSID-1);
-	ys = max(hit->y-hitrad,0); ye = min(hit->y+hitrad,VSID-1);
-	zs = max(hit->z-hitrad,0); ze = min(hit->z+hitrad,MAXZDIM-1);
-	if ((xs > xe) || (ys > ye) || (zs > ze)) return(0);
-
-	if (hitrad >= SETSPHMAXRAD-1) hitrad = SETSPHMAXRAD-2;
-
-	tempfloatbuf[0] = 0.0f;
-#if 0
-		//Totally unoptimized
-	for(i=1;i<=hitrad;i++) tempfloatbuf[i] = pow((float)i,vx5.curpow);
-#else
-	tempfloatbuf[1] = 1.0f;
-	for(i=2;i<=hitrad;i++)
-	{
-		if (!factr[i][0]) tempfloatbuf[i] = exp(logint[i]*vx5.curpow);
-		else tempfloatbuf[i] = tempfloatbuf[factr[i][0]]*tempfloatbuf[factr[i][1]];
-	}
-#endif
-	*(long *)&tempfloatbuf[hitrad+1] = 0x7f7fffff; //3.4028235e38f; //Highest float
-
-// ---------- Need to know how many voxels to allocate... SLOW!!! :( ----------
-	cx = cy = cz = 0; //Centroid
-	cw = 0;       //Weight (1 unit / voxel)
-	numvoxs = 0;
-	sq = 0; //pow(fabs(x-hit->x),vx5.curpow) + "y + "z < pow(vx5.currad,vx5.curpow)
-	for(x=xs;x<=xe;x++)
-	{
-		ff = tempfloatbuf[hitrad]-tempfloatbuf[labs(x-hit->x)];
-		for(y=ys;y<=ye;y++)
-		{
-			f = ff-tempfloatbuf[labs(y-hit->y)];
-			if (*(long *)&f > 0) //WARNING: make sure to always write ylenptr!
-			{
-				while (*(long *)&tempfloatbuf[sq] <  *(long *)&f) sq++;
-				while (*(long *)&tempfloatbuf[sq] >= *(long *)&f) sq--;
-				z0 = max(hit->z-sq,zs); z1 = min(hit->z+sq+1,ze);
-				for(z=z0;z<z1;z++)
-				{
-					i = getcube(x,y,z); //0:air, 1:unexposed solid, 2:vbuf col ptr
-					if (i)
-					{
-						cx += (x-hit->x); cy += (y-hit->y); cz += (z-hit->z); cw++;
-					}
-					if ((i == 0) || ((i == 1) && (1))) continue; //not_on_border))) continue; //FIX THIS!!!
-					numvoxs++;
-				}
-			}
-		}
-	}
-	if (numvoxs <= 0) return(0); //No voxels found!
-// ---------------------------------------------------------------------------
-
-	f = 1.0 / (float)cw; //Make center of sprite the centroid
-	spr->p.x = (float)hit->x + (float)cx*f;
-	spr->p.y = (float)hit->y + (float)cy*f;
-	spr->p.z = (float)hit->z + (float)cz*f;
-	spr->s.x = 1.f; spr->h.x = 0.f; spr->f.x = 0.f;
-	spr->s.y = 0.f; spr->h.y = 1.f; spr->f.y = 0.f;
-	spr->s.z = 0.f; spr->h.z = 0.f; spr->f.z = 1.f;
-
-	x = xe-xs+1; y = ye-ys+1; z = ze-zs+1;
-
-	j = sizeof(kv6data) + numvoxs*sizeof(kv6voxtype) + x*4 + x*y*2;
-	i = (long)malloc(j); if (!i) return(0); if (i&3) { free((void *)i); return(0); }
-	spr->voxnum = kv = (kv6data *)i; spr->flags = 0;
-	kv->leng = j;
-	kv->xsiz = x;
-	kv->ysiz = y;
-	kv->zsiz = z;
-	kv->xpiv = spr->p.x - xs;
-	kv->ypiv = spr->p.y - ys;
-	kv->zpiv = spr->p.z - zs;
-	kv->numvoxs = numvoxs;
-	kv->namoff = 0;
-	kv->lowermip = 0;
-	kv->vox = (kv6voxtype *)((long)spr->voxnum+sizeof(kv6data));
-	kv->xlen = (unsigned long *)(((long)kv->vox)+numvoxs*sizeof(kv6voxtype));
-	kv->ylen = (unsigned short *)(((long)kv->xlen) + kv->xsiz*4);
-
-	voxptr = kv->vox; numvoxs = 0;
-	xlenptr = kv->xlen; oxvoxs = 0;
-	ylenptr = kv->ylen; oyvoxs = 0;
-
-	sq = 0; //pow(fabs(x-hit->x),vx5.curpow) + "y + "z < pow(vx5.currad,vx5.curpow)
-	for(x=xs;x<=xe;x++)
-	{
-		ff = tempfloatbuf[hitrad]-tempfloatbuf[labs(x-hit->x)];
-		for(y=ys;y<=ye;y++)
-		{
-			f = ff-tempfloatbuf[labs(y-hit->y)];
-			if (*(long *)&f > 0) //WARNING: make sure to always write ylenptr!
-			{
-				while (*(long *)&tempfloatbuf[sq] <  *(long *)&f) sq++;
-				while (*(long *)&tempfloatbuf[sq] >= *(long *)&f) sq--;
-				z0 = max(hit->z-sq,zs); z1 = min(hit->z+sq+1,ze);
-				for(z=z0;z<z1;z++)
-				{
-					i = getcube(x,y,z); //0:air, 1:unexposed solid, 2:vbuf col ptr
-					if ((i == 0) || ((i == 1) && (1))) continue; //not_on_border))) continue; //FIX THIS!!!
-					voxptr[numvoxs].col = lightvox(*(long *)i);
-					voxptr[numvoxs].z = z-zs;
-					voxptr[numvoxs].vis = 63; //FIX THIS!!!
-					voxptr[numvoxs].dir = 0; //FIX THIS!!!
-					numvoxs++;
-				}
-			}
-			*ylenptr++ = numvoxs-oyvoxs; oyvoxs = numvoxs;
-		}
-		*xlenptr++ = numvoxs-oxvoxs; oxvoxs = numvoxs;
-	}
-	return(cw);
-}
-
-	//Sprite structure is already allocated
-	//kv6, vox, xlen, ylen are all malloced in here!
-long meltspans (vx5sprite *spr, vspans *lst, long lstnum, lpoint3d *offs)
-{
-	float f;
-	long i, j, x, y, z, xs, ys, zs, xe, ye, ze, z0, z1;
-	long ox, oy, oxvoxs, oyvoxs, numvoxs, cx, cy, cz, cw;
-	kv6data *kv;
-	kv6voxtype *voxptr;
-	unsigned long *xlenptr;
-	unsigned short *ylenptr;
-
-	if (lstnum <= 0) return(0);
-// ---------- Need to know how many voxels to allocate... SLOW!!! :( ----------
-	cx = cy = cz = 0; //Centroid
-	cw = 0;       //Weight (1 unit / voxel)
-	numvoxs = 0;
-	xs = xe = ((long)lst[0].x)+offs->x;
-	ys = ((long)lst[       0].y)+offs->y;
-	ye = ((long)lst[lstnum-1].y)+offs->y;
-	zs = ze = ((long)lst[0].z0)+offs->z;
-	for(j=0;j<lstnum;j++)
-	{
-		x = ((long)lst[j].x)+offs->x;
-		y = ((long)lst[j].y)+offs->y; if ((x|y)&(~(VSID-1))) continue;
-			  if (x < xs) xs = x;
-		else if (x > xe) xe = x;
-		z0 = ((long)lst[j].z0)+offs->z;   if (z0 < 0) z0 = 0;
-		z1 = ((long)lst[j].z1)+offs->z+1; if (z1 > MAXZDIM) z1 = MAXZDIM;
-		if (z0 < zs) zs = z0;
-		if (z1 > ze) ze = z1;
-		for(z=z0;z<z1;z++) //getcube too SLOW... FIX THIS!!!
-		{
-			i = getcube(x,y,z); //0:air, 1:unexposed solid, 2:vbuf col ptr
-			if (i) { cx += x-offs->x; cy += y-offs->y; cz += z-offs->z; cw++; }
-			if (i&~1) numvoxs++;
-		}
-	}
-	if (numvoxs <= 0) return(0); //No voxels found!
-// ---------------------------------------------------------------------------
-
-	f = 1.0 / (float)cw; //Make center of sprite the centroid
-	spr->p.x = (float)offs->x + (float)cx*f;
-	spr->p.y = (float)offs->y + (float)cy*f;
-	spr->p.z = (float)offs->z + (float)cz*f;
-	spr->x.x = 0.f; spr->y.x = 1.f; spr->z.x = 0.f;
-	spr->x.y = 1.f; spr->y.y = 0.f; spr->z.y = 0.f;
-	spr->x.z = 0.f; spr->y.z = 0.f; spr->z.z = 1.f;
-
-	x = xe-xs+1; y = ye-ys+1; z = ze-zs;
-
-	j = sizeof(kv6data) + numvoxs*sizeof(kv6voxtype) + y*4 + x*y*2;
-	i = (long)malloc(j); if (!i) return(0); if (i&3) { free((void *)i); return(0); }
-	spr->voxnum = kv = (kv6data *)i; spr->flags = 0;
-	kv->leng = j;
-	kv->xsiz = y;
-	kv->ysiz = x;
-	kv->zsiz = z;
-	kv->xpiv = spr->p.y - ys;
-	kv->ypiv = spr->p.x - xs;
-	kv->zpiv = spr->p.z - zs;
-	kv->numvoxs = numvoxs;
-	kv->namoff = 0;
-	kv->lowermip = 0;
-	kv->vox = (kv6voxtype *)((long)spr->voxnum+sizeof(kv6data));
-	kv->xlen = (unsigned long *)(((long)kv->vox)+numvoxs*sizeof(kv6voxtype));
-	kv->ylen = (unsigned short *)(((long)kv->xlen) + kv->xsiz*4);
-
-	voxptr = kv->vox; numvoxs = 0;
-	xlenptr = kv->xlen; oxvoxs = 0;
-	ylenptr = kv->ylen; oyvoxs = 0;
-	ox = xs; oy = ys;
-	for(j=0;j<lstnum;j++)
-	{
-		x = ((long)lst[j].x)+offs->x;
-		y = ((long)lst[j].y)+offs->y; if ((x|y)&(~(VSID-1))) continue;
-		while ((ox != x) || (oy != y))
-		{
-			*ylenptr++ = numvoxs-oyvoxs; oyvoxs = numvoxs; ox++;
-			if (ox > xe)
-			{
-				*xlenptr++ = numvoxs-oxvoxs; oxvoxs = numvoxs;
-				ox = xs; oy++;
-			}
-		}
-		z0 = ((long)lst[j].z0)+offs->z;   if (z0 < 0) z0 = 0;
-		z1 = ((long)lst[j].z1)+offs->z+1; if (z1 > MAXZDIM) z1 = MAXZDIM;
-		for(z=z0;z<z1;z++) //getcube TOO SLOW... FIX THIS!!!
-		{
-			i = getcube(x,y,z); //0:air, 1:unexposed solid, 2:vbuf col ptr
-			if (!(i&~1)) continue;
-			voxptr[numvoxs].col = lightvox(*(long *)i);
-			voxptr[numvoxs].z = z-zs;
-
-			voxptr[numvoxs].vis = 63; //FIX THIS!!!
-			//if (!isvoxelsolid(x-1,y,z)) voxptr[numvoxs].vis |= 1;
-			//if (!isvoxelsolid(x+1,y,z)) voxptr[numvoxs].vis |= 2;
-			//if (!isvoxelsolid(x,y-1,z)) voxptr[numvoxs].vis |= 4;
-			//if (!isvoxelsolid(x,y+1,z)) voxptr[numvoxs].vis |= 8;
-			//if (!isvoxelsolid(x,y,z-1)) voxptr[numvoxs].vis |= 16;
-			//if (!isvoxelsolid(x,y,z+1)) voxptr[numvoxs].vis |= 32;
-
-			voxptr[numvoxs].dir = 0; //FIX THIS!!!
-			numvoxs++;
-		}
-	}
-	while (1)
-	{
-		*ylenptr++ = numvoxs-oyvoxs; oyvoxs = numvoxs; ox++;
-		if (ox > xe)
-		{
-			*xlenptr++ = numvoxs-oxvoxs; oxvoxs = numvoxs;
-			ox = xs; oy++; if (oy > ye) break;
-		}
-	}
-	return(cw);
-}
 
 static void setlighting (long x0, long y0, long z0, long x1, long y1, long z1, long lval)
 {
@@ -8342,39 +7939,6 @@ void uninitvoxlap ()
 	if (vbuf) { free(vbuf); vbuf = 0; }
 	if (vbit) { free(vbit); vbit = 0; }
 
-	if (khashbuf)
-	{     //Free all KV6&KFA on hash list
-		long i, j;
-		kfatype *kfp;
-		for(i=0;i<khashpos;i+=strlen(&khashbuf[i+9])+10)
-		{
-			switch (khashbuf[i+8])
-			{
-				case 0: //KV6
-					freekv6(*(kv6data **)&khashbuf[i+4]);
-					break;
-				case 1: //KFA
-					kfp = *(kfatype **)&khashbuf[i+4];
-					if (!kfp) continue;
-					if (kfp->seq) free((void *)kfp->seq);
-					if (kfp->frmval) free((void *)kfp->frmval);
-					if (kfp->hingesort) free((void *)kfp->hingesort);
-					if (kfp->hinge) free((void *)kfp->hinge);
-					if (kfp->spr)
-					{
-						for(j=kfp->numspr-1;j>=0;j--)
-							if (kfp->spr[j].voxnum)
-								freekv6((kv6data *)kfp->spr[j].voxnum);
-						free((void *)kfp->spr);
-					}
-					free((void *)kfp);
-					break;
-				default: __assume(0); //tells MSVC default can't be reached
-			}
-		}
-		free(khashbuf); khashbuf = 0; khashpos = khashsiz = 0;
-	}
-
 	if (skylng) { free((void *)skylng); skylng = 0; }
 	if (skylat) { free((void *)skylat); skylat = 0; }
 	if (skypic) { free((void *)skypic); skypic = skyoff = 0; }
@@ -8495,11 +8059,6 @@ long initvoxlap ()
 
 	memset(mixn,0,sizeof(mixn));
 
-		//Initialize hash table for getkv6()
-	memset(khashead,-1,sizeof(khashead));
-	if (!(khashbuf = (char *)malloc(KHASHINITSIZE))) return(-1);
-	khashsiz = KHASHINITSIZE;
-
 	vx5.anginc = 1; //Higher=faster (1:full,2:half)
 	vx5.sideshademode = 0; setsideshades(0,0,0,0,0,0);
 	vx5.mipscandist = 128;
@@ -8593,28 +8152,7 @@ typedef struct { long f, p, x, y; } tiletype;
 #define FONTYDIM 12
 long showtarget = 1;
 
-#define MAXSPRITES 1024 //NOTE: this shouldn't be static!
-#ifdef __cplusplus
-struct spritetype : vx5sprite //Note: C++!
-{
-	point3d v, r;  //other attributes (not used by voxlap engine)
-	long owner, tim, tag;
-};
-#else
-typedef struct
-{
-	point3d p; long flags;
-	static union { point3d s, x; }; static union { kv6data *voxnum; kfatype *kfaptr; };
-	static union { point3d h, y; }; long kfatim;
-	static union { point3d f, z; }; long okfatim;
-//----------------------------------------------------
-	point3d v, r;  //other attributes (not used by voxlap engine)
-	long owner, tim, tag;
-} spritetype;
-#endif
-
 long numsprites, spr2goaltim = 0;
-//long sortorder[MAXSPRITES];
 
 long lockanginc = 0;
 
