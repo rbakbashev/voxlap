@@ -364,10 +364,8 @@ typedef struct { float x, y; } point2d;
 #if USEV5ASM
 #ifndef __cplusplus
 	extern void *cfasm;
-	extern castdat skycast;
 #else
 	extern "C" void *cfasm;
-	extern "C" castdat skycast;
 #endif
 	#define cf ((cftype *)&cfasm)
 #else
@@ -1274,26 +1272,17 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 #endif
 
 		//Clip borders safely (MUST use integers!) - don't wrap around
-#if ((USEZBUFFER == 1) && (USEV5ASM != 0))
-	skycast.dist = gxmax;
-#endif
 	if (gixy[0] < 0) j = glipos.x; else j = VSID-1-glipos.x;
 	q = mul64(gdz[0],j); q += (unsigned __int64)gpz[0];
 	if (q < (unsigned __int64)gxmax)
 	{
 		gxmax = (long)q;
-#if ((USEZBUFFER == 1) && (USEV5ASM != 0))
-		skycast.dist = 0x7fffffff;
-#endif
 	}
 	if (gixy[1] < 0) j = glipos.y; else j = VSID-1-glipos.y;
 	q = mul64(gdz[1],j); q += (unsigned __int64)gpz[1];
 	if (q < (unsigned __int64)gxmax)
 	{
 		gxmax = (long)q;
-#if ((USEZBUFFER == 1) && (USEV5ASM != 0))
-		skycast.dist = 0x7fffffff;
-#endif
 	}
 
 	if (vx5.sideshademode)
@@ -6734,7 +6723,6 @@ extern void *caddasm;
 extern void *ztabasm;
 #define ztab4 ((point4d *)&ztabasm)
 extern short qsum0[4], qsum1[4], qbplbpp[4];
-extern long kv6frameplace, kv6bytesperline;
 extern float scisdist;
 extern __int64 kv6colmul[256], kv6coladd[256];
 
@@ -6753,234 +6741,13 @@ char ptfaces16[43][8] =
 	6, 0,16, 48,112,96,32,0,  6, 0,16,48,112,96,64,0,  6, 0,16, 80,112,96,32,0,
 };
 
-void drawboundcubesseinit ();
-void drawboundcubesse (kv6voxtype *, long);
-void drawboundcube3dninit ();
-void drawboundcube3dn (kv6voxtype *, long);
-
 #ifdef __cplusplus
 }
 #endif
 
-//static void initboundcubescr (long dafram, long dabpl, long x, long y, long dabpp)
-//{
-//   qsum1[3] = qsum1[1] = 0x7fff-y; qsum1[2] = qsum1[0] = 0x7fff-x;
-//   qbplbpp[1] = dabpl; qbplbpp[0] = ((dabpp+7)>>3);
-//   kv6frameplace = dafram; kv6bytesperline = dabpl;
-//}
-
 static __declspec(align(8)) short lightlist[MAXLIGHTS+1][4];
 static __int64 all32767 = 0x7fff7fff7fff7fff;
 
-#ifdef _MSC_VER
-
-static _inline void movps (point4d *dest, point4d *src)
-{
-	_asm
-	{
-		mov eax, src
-		movaps xmm7, [eax]
-		mov eax, dest
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void intss (point4d *dest, long src)
-{
-	_asm
-	{
-		mov eax, dest
-		cvtsi2ss xmm7, src
-		shufps xmm7, xmm7, 0
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void addps (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movaps xmm7, [eax]
-		mov eax, b
-		addps xmm7, [eax]
-		mov eax, sum
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void mulps (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movaps xmm7, [eax]
-		mov eax, b
-		mulps xmm7, [eax]
-		mov eax, sum
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void subps (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movaps xmm7, [eax]
-		mov eax, b
-		subps xmm7, [eax]
-		mov eax, sum
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void minps (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movaps xmm7, [eax]
-		mov eax, b
-		minps xmm7, [eax]
-		mov eax, sum
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void maxps (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movaps xmm7, [eax]
-		mov eax, b
-		maxps xmm7, [eax]
-		mov eax, sum
-		movaps [eax], xmm7
-	}
-}
-
-static _inline void movps_3dn (point4d *dest, point4d *src)
-{
-	_asm
-	{
-		mov eax, src
-		movq mm0, [eax]
-		movq mm1, [eax+8]
-		mov eax, dest
-		movq [eax], mm0
-		movq [eax+8], mm1
-	}
-}
-
-static _inline void intss_3dn (point4d *dest, long src)
-{
-	_asm
-	{
-		mov eax, dest
-		movd mm0, src
-		pi2fd mm0, mm0
-		punpckldq mm0, mm0
-		movq [eax], mm0
-		movq [eax+8], mm0
-	}
-}
-
-static _inline void addps_3dn (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movq mm0, [eax]
-		movq mm1, [eax+8]
-		mov eax, b
-		pfadd mm0, [eax]
-		pfadd mm1, [eax+8]
-		mov eax, sum
-		movq [eax], mm0
-		movq [eax+8], mm1
-	}
-}
-
-static _inline void mulps_3dn (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movq mm0, [eax]
-		movq mm1, [eax+8]
-		mov eax, b
-		pfmul mm0, [eax]
-		pfmul mm1, [eax+8]
-		mov eax, sum
-		movq [eax], mm0
-		movq [eax+8], mm1
-	}
-}
-
-static _inline void subps_3dn (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movq mm0, [eax]
-		movq mm1, [eax+8]
-		mov eax, b
-		pfsub mm0, [eax]
-		pfsub mm1, [eax+8]
-		mov eax, sum
-		movq [eax], mm0
-		movq [eax+8], mm1
-	}
-}
-
-static _inline void minps_3dn (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movq mm0, [eax]
-		movq mm1, [eax+8]
-		mov eax, b
-		pfmin mm0, [eax]
-		pfmin mm1, [eax+8]
-		mov eax, sum
-		movq [eax], mm0
-		movq [eax+8], mm1
-	}
-}
-
-static _inline void maxps_3dn (point4d *sum, point4d *a, point4d *b)
-{
-	_asm
-	{
-		mov eax, a
-		movq mm0, [eax]
-		movq mm1, [eax+8]
-		mov eax, b
-		pfmax mm0, [eax]
-		pfmax mm1, [eax+8]
-		mov eax, sum
-		movq [eax], mm0
-		movq [eax+8], mm1
-	}
-}
-
-#endif
-
-#define DRAWBOUNDCUBELINE(const) \
-	for(;v0<=v1 && v0->z<inz;v0++) drawboundcubesse(v0,const+0x20);\
-	for(;v0<=v1 && v1->z>inz;v1--) drawboundcubesse(v1,const+0x10);\
-						  if (v0 == v1) drawboundcubesse(v1,const+0x00);
-
-#define DRAWBOUNDCUBELINE_3DN(const) \
-	for(;v0<=v1 && v0->z<inz;v0++) drawboundcube3dn(v0,const+0x20);\
-	for(;v0<=v1 && v1->z>inz;v1--) drawboundcube3dn(v1,const+0x10);\
-						  if (v0 == v1) drawboundcube3dn(v1,const+0x00);
-
-	//Code taken from renderboundcube of SLAB6D (Pentium III version :)
-#define MAXZSIZ 1024
 #endif
 
 //-------------------------- KFA sprite code begins --------------------------
@@ -8492,8 +8259,6 @@ void voxsetframebuffer (long p, long b, long x, long y)
 
 		//Set global variables used by kv6draw's PIII asm (drawboundcube)
 	qsum1[3] = qsum1[1] = 0x7fff-y; qsum1[2] = qsum1[0] = 0x7fff-x;
-	kv6bytesperline = qbplbpp[1] = b; qbplbpp[0] = 4;
-	kv6frameplace = p - (qsum1[0]*qbplbpp[0] + qsum1[1]*qbplbpp[1]);
 
 	if ((b != ylookup[1]) || (x != xres) || (y != yres))
 	{
@@ -8562,8 +8327,6 @@ fogend2:    emms
 #endif
 		}
 	} else ofogdist = -1;
-
-	if (cputype&(1<<25)) drawboundcubesseinit(); else drawboundcube3dninit();
 }
 
 void freekv6 (kv6data *kv6)
