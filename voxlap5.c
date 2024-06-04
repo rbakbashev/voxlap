@@ -1853,17 +1853,10 @@ skipalldraw:;
 typedef struct
 {
 	FILE *fil;   //0:no file open, !=0:open file (either stand-alone or zip)
-	int comptyp; //0:raw data (can be ZIP or stand-alone), 8:PKZIP LZ77 *flate
-	int seek0;   //0:stand-alone file, !=0: start of zip compressed stream data
-	int compleng;//Global variable for compression FIFO
-	int comptell;//Global variable for compression FIFO
 	int leng;    //Uncompressed file size (bytes)
 	int pos;     //Current uncompressed relative file position (0<=pos<=leng)
-	int endpos;  //Temp global variable for kzread
-	int jmpplc;  //Store place where decompression paused
 	int i;       //For stand-alone/ZIP comptyp#0, this is like "uncomptell"
-					  //For ZIP comptyp#8&btype==0 "<64K store", this saves i state
-	int bfinal;  //LZ77 decompression state (for later calls)
+	             //For ZIP comptyp#8&btype==0 "<64K store", this saves i state
 } kzfilestate;
 static kzfilestate kzfs;
 
@@ -1877,8 +1870,6 @@ INT_PTR kzopen (const char *filnam)
 		exit(1);
 	}
 
-	kzfs.comptyp = 0;
-	kzfs.seek0 = 0;
 	kzfs.leng = filelength(_fileno(kzfs.fil));
 	kzfs.pos = 0;
 	kzfs.i = 0;
@@ -1889,12 +1880,12 @@ INT_PTR kzopen (const char *filnam)
 	//returns number of bytes copied
 int kzread (void *buffer, int leng)
 {
-	int i, j, k, bfinal, btype, hlit, hdist;
+	int i, j, k, btype, hlit, hdist;
 
 	if ((!kzfs.fil) || (leng <= 0)) return(0);
 
 	if (kzfs.pos != kzfs.i) //Seek only when position changes
-		fseek(kzfs.fil,kzfs.seek0+kzfs.pos,SEEK_SET);
+		fseek(kzfs.fil,kzfs.pos,SEEK_SET);
 	i = min(kzfs.leng-kzfs.pos,leng);
 	fread(buffer,i,1,kzfs.fil);
 	kzfs.i += i; //kzfs.i is a local copy of ftell(kzfs.fil);
