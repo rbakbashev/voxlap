@@ -38,8 +38,6 @@ static __inline int filelength (int h)
 #define _inline inline
 #endif
 
-#define VOXLAP5
-
 #define MAXXDIM 1024
 #define MAXYDIM 768
 #define PI 3.141592653589793
@@ -58,42 +56,10 @@ typedef struct { double x, y, z; } dpoint3d;
 #define MAXFRM 1024 //MUST be even number for alignment!
 
 	//Voxlap5 shared global variables:
-#ifndef VOXLAP5
-extern
-#endif
 struct
 {
-	//------------------------ DATA coming from VOXLAP5 ------------------------
-
-		//Bounding box written by last set* VXL writing call
-	long minx, miny, minz, maxx, maxy, maxz;
-
-		//Falling voxels shared data:
-	long flstnum;
-
-		//Total count of solid voxels in .VXL map (included unexposed voxels)
-	long globalmass;
-
-	//------------------------ DATA provided to VOXLAP5 ------------------------
-
 		//Opticast variables:
 	long anginc, sideshademode, mipscandist, maxscandist, vxlmipuse, fogcol;
-
-		//Drawsprite variables:
-	long kv6col;
-
-		//Map modification function data:
-	long curcol, currad, curhei;
-	float curpow;
-
-		//Procedural texture function data:
-	long (*colfunc)(lpoint3d *);
-	long cen, amount, *pic, bpl, xsiz, ysiz, xoru, xorv, picmode;
-	point3d fpico, fpicu, fpicv, fpicw;
-	lpoint3d pico, picu, picv;
-	float daf;
-
-	long fallcheck;
 } vx5;
 
 	//Initialization functions:
@@ -117,9 +83,6 @@ extern void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint
 extern void updatebbox (long, long, long, long, long, long, long);
 extern void updatevxl ();
 extern void genmipvxl (long, long, long, long);
-
-	//Procedural texture functions:
-extern long curcolfunc (lpoint3d *);
 
 	//ZIP functions:
 extern int kzopen (const char *);
@@ -420,8 +383,6 @@ static _inline long lbound0 (long a, long b) //b MUST be >= 0
 	if ((unsigned long)a <= b) return(a);
 	return((~(a>>31))&b);
 }
-
-long curcolfunc (lpoint3d *p) { return(vx5.curcol); }
 
 static long slng (const char *s)
 {
@@ -2412,20 +2373,6 @@ void setsideshades (char sto, char sbo, char sle, char sri, char sup, char sdo)
 	else vx5.sideshademode = 1;
 }
 
-unsigned long calcglobalmass ()
-{
-	unsigned long i, j;
-	char *v;
-
-	j = VSID*VSID*256;
-	for(i=0;i<VSID*VSID;i++)
-	{
-		v = sptr[i]; j -= v[1];
-		while (v[0]) { v += v[0]*4; j += v[3]-v[1]; }
-	}
-	return(j);
-}
-
 long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
 	FILE *fil;
@@ -2463,9 +2410,7 @@ long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe
 	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
 	vbit[vbiti>>5] = (1<<vbiti)-1;
 
-	vx5.globalmass = calcglobalmass();
-
-	gmipnum = 1; vx5.flstnum = 0;
+	gmipnum = 1;
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
 	return(1);
 }
@@ -2507,7 +2452,6 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 	if (mipmax <= 0) return;
 	mipnum = 1;
 
-	vx5.colfunc = curcolfunc;
 	xsiz = VSID; ysiz = VSID; zsiz = MAXZDIM;
 	ssr = sptr; ssw = sptr+xsiz*ysiz;
 	while ((xsiz > 1) && (ysiz > 1) && (zsiz > 1) && (mipnum < mipmax))
@@ -2902,7 +2846,6 @@ void uninitvoxlap ()
 	if (skylng) { free((void *)skylng); skylng = 0; }
 	if (skypic) { free((void *)skypic); skypic = skyoff = 0; }
 
-	if (vx5.pic) { free(vx5.pic); vx5.pic = 0; }
 #if (USEZBUFFER == 1)
 	if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
 #endif
@@ -2942,18 +2885,8 @@ long initvoxlap ()
 	vx5.sideshademode = 0; setsideshades(0,0,0,0,0,0);
 	vx5.mipscandist = 128;
 	vx5.maxscandist = 256; //must be <= 2047
-	vx5.colfunc = curcolfunc; //This prevents omission bugs from crashing voxlap5
-	vx5.curcol = 0x80804c33;
-	vx5.currad = 8;
-	vx5.curhei = 0;
-	vx5.curpow = 2.0;
-	vx5.amount = 0x70707;
-	vx5.pic = 0;
-	vx5.flstnum = 0;
-	vx5.kv6col = 0x808080;
 	vx5.vxlmipuse = 1;
 	vx5.fogcol = -1;
-	vx5.fallcheck = 0;
 
 	gmipnum = 0;
 
@@ -2993,7 +2926,6 @@ long initmap ()
 
 	vx5.vxlmipuse = 9;
 	vx5.mipscandist = 192;
-	vx5.fallcheck = 1;
 
 	updatevxl();
 
