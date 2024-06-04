@@ -58,7 +58,7 @@ typedef struct { double x, y, z; } dpoint3d;
 struct
 {
 		//Opticast variables:
-	long anginc, sideshademode, mipscandist, maxscandist, vxlmipuse;
+	long anginc, maxscandist, vxlmipuse;
 } vx5;
 
 	//Initialization functions:
@@ -71,7 +71,6 @@ extern long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d 
 
 	//Screen related functions:
 extern void voxsetframebuffer (long, long, long, long);
-extern void setsideshades (char, char, char, char, char, char);
 extern void setcamera (dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *, float, float, float);
 extern void opticast ();
 
@@ -97,9 +96,6 @@ extern void kzclose ();
 
 #define PREC (256*4096)
 #define CMPPREC (256*4096)
-#define FPREC (256*4096)
-#define GOLDRAT 0.3819660112501052 //Golden Ratio: 1 - 1/((sqrt(5)+1)/2)
-#define ESTNORMRAD 2 //Specially optimized for 2: DON'T CHANGE unless testing!
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -115,13 +111,7 @@ extern void kzclose ();
 #include <stdlib.h>
 
 #define VOXSIZ VSID*VSID*128
-#ifdef __cplusplus
-extern "C" {
-#endif
 char *sptr[(VSID*VSID*4)/3];
-#ifdef __cplusplus
-}
-#endif
 static long *vbuf = 0, *vbit = 0, vbiti;
 	//WARNING: loaddta uses last 2MB of vbuf; vbuf:[VOXSIZ>>2], vbit:[VOXSIZ>>7]
 	//WARNING: loadpng uses last 4MB of vbuf; vbuf:[VOXSIZ>>2], vbit:[VOXSIZ>>7]
@@ -470,12 +460,6 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 	if (q < (unsigned __int64)gxmax)
 	{
 		gxmax = (long)q;
-	}
-
-	if (vx5.sideshademode)
-	{
-		gcsub[0] = gcsub[(((unsigned long)gixy[0])>>31)+4];
-		gcsub[1] = gcsub[(((unsigned long)gixy[1])>>31)+6];
 	}
 
 //------------------------------------------------------------------------
@@ -1339,29 +1323,6 @@ void opticast ()
 	}
 }
 
-	//0: asm temp for current x
-	//1: asm temp for current y
-	//2: bottom (28)
-	//3: top    ( 0)
-	//4: left   ( 8)
-	//5: right  (24)
-	//6: up     (12)
-	//7: down   (12)
-	//setsideshades(0,0,0,0,0,0);
-	//setsideshades(0,28,8,24,12,12);
-void setsideshades (char sto, char sbo, char sle, char sri, char sup, char sdo)
-{
-	((char *)&gcsub[2])[7] = sbo; ((char *)&gcsub[3])[7] = sto;
-	((char *)&gcsub[4])[7] = sle; ((char *)&gcsub[5])[7] = sri;
-	((char *)&gcsub[6])[7] = sup; ((char *)&gcsub[7])[7] = sdo;
-	if (!(sto|sbo|sle|sri|sup|sdo))
-	{
-		vx5.sideshademode = 0;
-		((char *)&gcsub[0])[7] = ((char *)&gcsub[1])[7] = 0x00;
-	}
-	else vx5.sideshademode = 1;
-}
-
 long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
 	FILE *fil;
@@ -1690,8 +1651,6 @@ char ptfaces16[43][8] =
 }
 #endif
 
-static __int64 all32767 = 0x7fff7fff7fff7fff;
-
 #endif
 
 	//Updates mip-mapping
@@ -1798,8 +1757,6 @@ long initvoxlap ()
 	memset(mixn,0,sizeof(mixn));
 
 	vx5.anginc = 1; //Higher=faster (1:full,2:half)
-	vx5.sideshademode = 0; setsideshades(0,0,0,0,0,0);
-	vx5.mipscandist = 128;
 	vx5.maxscandist = 256; //must be <= 2047
 	vx5.vxlmipuse = 1;
 
@@ -1813,8 +1770,6 @@ long initvoxlap ()
 	//Player position variables:
 #define CLIPRAD 5
 dpoint3d ipos, istr, ihei, ifor, ivel;
-
-long lockanginc = 0;
 
 	//Mouse button state global variables:
 long obstatus = 0, bstatus = 0;
@@ -1840,7 +1795,6 @@ long initmap ()
 	}
 
 	vx5.vxlmipuse = 9;
-	vx5.mipscandist = 192;
 
 	updatevxl();
 
@@ -1857,8 +1811,6 @@ long initapp (long argc, char **argv)
 	xres = 640; yres = 480; colbits = 32; fullscreen = 0;
 
 	if (initvoxlap() < 0) return(-1);
-
-	setsideshades(0,4,1,3,2,2);
 
 	if (initmap() < 0) return(-1);
 
