@@ -1,3 +1,5 @@
+//VOXLAP engine by Ken Silverman (http://advsys.net/ken)
+
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
@@ -5,6 +7,16 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <stdarg.h>
+#include <conio.h>
+#include <dos.h>
+#define MAX_PATH 260
+#endif
 
 #ifdef __GNUC__
 #include <stdint.h>
@@ -52,8 +64,6 @@ typedef struct { double x, y, z; } dpoint3d;
 
 #pragma pack(pop)
 
-#define MAXFRM 1024 //MUST be even number for alignment!
-
 	//Voxlap5 shared global variables:
 struct
 {
@@ -91,24 +101,8 @@ extern void kzclose ();
 
 #include "sysmain.h"
 
-
-//VOXLAP engine by Ken Silverman (http://advsys.net/ken)
-
 #define PREC (256*4096)
 #define CMPPREC (256*4096)
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include <conio.h>
-#include <dos.h>
-#define MAX_PATH 260
-#endif
-#include <stdlib.h>
 
 #define VOXSIZ VSID*VSID*128
 char *sptr[(VSID*VSID*4)/3];
@@ -150,7 +144,7 @@ typedef struct { float x, y; } point2d;
 cftype cf[256];
 
 	//Screen related variables:
-static long xres, yres, bytesperline, frameplace, xres4;
+static long bytesperline, frameplace, xres4;
 long ylookup[MAXYDIM+1];
 
 static lpoint3d glipos;
@@ -178,18 +172,6 @@ static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
-	//Parallaxing sky variables:
-static long skypic = 0, nskypic = 0, skybpl, skyysiz, skycurlng, skycurdir;
-static float skylngmul;
-static point2d *skylng = 0;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-	//Parallaxing sky variables (accessed by assembly code)
-long skyoff = 0, skyxsiz, *skylat = 0;
-
 __int64 gi, gcsub[8] =
 {
 	0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,
@@ -200,9 +182,6 @@ long gpz[2], gdz[2], gxmip, gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
 long zbufoff;
-#ifdef __cplusplus
-}
-#endif
 #define gi0 (((long *)&gi)[0])
 #define gi1 (((long *)&gi)[1])
 
@@ -1121,7 +1100,6 @@ void opticast ()
 
 	hrend = hrendzsse;
 	vrend = vrendzsse;
-	nskypic = skyoff = 0;
 
 	gstartv = (char *)*(long *)gpixy;
 	if (glipos.z >= gstartv[1])
@@ -1186,7 +1164,7 @@ void opticast ()
 	if ((fy < 0) && (j > 0)) //(cx,cy),(x0,wy0),(x1,wy0)
 	{
 		ff = (x1-x0) / (float)j; grd = 1.0f / (wy0-cy);
-		gscanptr = (castdat *)radar; skycurlng = -1; skycurdir = -giforzsgn;
+		gscanptr = (castdat *)radar;
 		for(i=0,f=x0+ff*.5f;i<j;f+=ff,i++)
 		{
 			vline(cx,cy,f,wy0,&p0,&p1);
@@ -1221,7 +1199,7 @@ void opticast ()
 	if ((gx > 0) && (j > 0)) //(cx,cy),(wx1,y1),(wx1,y2)
 	{
 		ff = (y2-y1) / (float)j; grd = 1.0f / (wx1-cx);
-		gscanptr = (castdat *)radar; skycurlng = -1; skycurdir = -giforzsgn;
+		gscanptr = (castdat *)radar;
 		for(i=0,f=y1+ff*.5f;i<j;f+=ff,i++)
 		{
 			hline(cx,cy,wx1,f,&p0,&p1);
@@ -1257,7 +1235,7 @@ void opticast ()
 	if ((gy > 0) && (j > 0)) //(cx,cy),(x2,wy1),(x3,wy1)
 	{
 		ff = (x2-x3) / (float)j; grd = 1.0f / (wy1-cy);
-		gscanptr = (castdat *)radar; skycurlng = -1; skycurdir = giforzsgn;
+		gscanptr = (castdat *)radar;
 		for(i=0,f=x3+ff*.5f;i<j;f+=ff,i++)
 		{
 			vline(cx,cy,f,wy1,&p0,&p1);
@@ -1292,7 +1270,7 @@ void opticast ()
 	if ((fx < 0) && (j > 0)) //(cx,cy),(wx0,y3),(wx0,y0)
 	{
 		ff = (y3-y0) / (float)j; grd = 1.0f / (wx0-cx);
-		gscanptr = (castdat *)radar; skycurlng = -1; skycurdir = giforzsgn;
+		gscanptr = (castdat *)radar;
 		for(i=0,f=y0+ff*.5f;i<j;f+=ff,i++)
 		{
 			hline(cx,cy,wx0,f,&p0,&p1);
@@ -1730,9 +1708,6 @@ void uninitvoxlap ()
 
 	if (vbuf) { free(vbuf); vbuf = 0; }
 	if (vbit) { free(vbit); vbit = 0; }
-
-	if (skylng) { free((void *)skylng); skylng = 0; }
-	if (skypic) { free((void *)skypic); skypic = skyoff = 0; }
 
 	if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
 	if (radarmem) { free(radarmem); radarmem = 0; radar = 0; }
