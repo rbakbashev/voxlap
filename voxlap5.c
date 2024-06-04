@@ -99,7 +99,6 @@ extern void kzclose ();
 #define PREC (256*4096)
 #define CMPPREC (256*4096)
 #define FPREC (256*4096)
-#define USEV5ASM 1
 #define GOLDRAT 0.3819660112501052 //Golden Ratio: 1 - 1/((sqrt(5)+1)/2)
 #define ESTNORMRAD 2 //Specially optimized for 2: DON'T CHANGE unless testing!
 
@@ -163,16 +162,7 @@ typedef struct { long x, y; } lpoint2d;
 typedef struct { float x, y; } point2d;
 #pragma pack(pop)
 
-#if USEV5ASM
-#ifndef __cplusplus
-	extern void *cfasm;
-#else
-	extern "C" void *cfasm;
-#endif
-	#define cf ((cftype *)&cfasm)
-#else
-	cftype cf[256];
-#endif
+cftype cf[256];
 
 	//Screen related variables:
 static long xres, yres, bytesperline, frameplace, xres4;
@@ -224,9 +214,6 @@ long gylookup[512+36], gmipnum = 0; //256+4+128+4+64+4+...
 long gpz[2], gdz[2], gxmip, gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
-//long reax, rebx, recx, redx, resi, redi, rebp, resp, remm[16];
-void v5_asm_dep_unlock();
-void grouscanasm (long);
 long zbufoff;
 #ifdef __cplusplus
 }
@@ -430,11 +417,10 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
 	long j;
 	cftype *c;
-#if (USEV5ASM == 0)
+
 	long gx, ogx, gy, ixy, col, dax, day;
 	cftype *c2, *ce;
 	char *v;
-#endif
 
 	vd0 = x0*gistr.x + y0*gihei.x + gcorn[0].x;
 	vd1 = x0*gistr.y + y0*gihei.y + gcorn[0].y;
@@ -497,32 +483,6 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 		gcsub[1] = gcsub[(((unsigned long)gixy[1])>>31)+6];
 	}
 
-#if USEV5ASM
-	if (nskypic)
-	{
-		if (skycurlng < 0)
-		{
-			ftol((atan2(vy1,vx1)+PI)*skylngmul-.5,&skycurlng);
-			if ((unsigned long)skycurlng >= skyysiz)
-				skycurlng = ((skyysiz-1)&(j>>31));
-		}
-		else if (skycurdir < 0)
-		{
-			j = skycurlng+1; if (j >= skyysiz) j = 0;
-			while (skylng[j].x*vy1 > skylng[j].y*vx1)
-				{ skycurlng = j++; if (j >= skyysiz) j = 0; }
-		}
-		else
-		{
-			while (skylng[skycurlng].x*vy1 < skylng[skycurlng].y*vx1)
-				{ skycurlng--; if (skycurlng < 0) skycurlng = skyysiz-1; }
-		}
-		skyoff = skycurlng*skybpl + nskypic;
-	}
-
-	//resp = 0;
-	grouscanasm((long)gstartv);
-#else
 //------------------------------------------------------------------------
 	ce = c; v = gstartv;
 	j = (((unsigned long)(gpz[1]-gpz[0]))>>31);
@@ -624,7 +584,6 @@ deletez:;
 	ce--; if (ce < &cf[128]) return;
 	for(c2=c;c2<=ce;c2++) c2[0] = c2[1];
 	goto afterdelete;
-#endif
 }
 
 static long vspan (long x, long y0, long y1)
@@ -695,14 +654,8 @@ static long ofogdist = -1;
 
 #ifdef _MSC_VER
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-extern void *opti4asm;
-#define opti4 ((point4d *)&opti4asm)
-#ifdef __cplusplus
-}
-#endif
+static __declspec(align(16)) point4d opti4[5];
+static __declspec(align(16)) void* opti4asm = opti4;
 
 void (*hrend)(long,long,long,long,long,long);
 void (*vrend)(long,long,long,long,long);
@@ -2086,14 +2039,7 @@ void opticast ()
 	ftol(gipos.z*PREC-.5f,&gposz);
 	gposxfrac[1] = gipos.x - (float)glipos.x; gposxfrac[0] = 1-gposxfrac[1];
 	gposyfrac[1] = gipos.y - (float)glipos.y; gposyfrac[0] = 1-gposyfrac[1];
-#if USEV5ASM
-	for(j=u=0;j<gmipnum;j++,u+=i)
-		for(i=0;i<(256>>j)+4;i++)
-			gylookup[i+u] = ((((gposz>>j)-i*PREC)>>(16-j))&0x0000ffff);
-	gxmip = max(vx5.mipscandist,4)*PREC;
-#else
 	for(i=0;i<256+4;i++) gylookup[i] = (i*PREC-gposz);
-#endif
 	gmaxscandist = min(max(vx5.maxscandist,1),2047)*PREC;
 
 	if (ofogdist < 0)
@@ -2803,8 +2749,6 @@ long initvoxlap ()
 	__int64 q;
 	long i, j, k, z, zz;
 	float f, ff;
-
-	v5_asm_dep_unlock();
 
 		//CPU Must have: FPU,RDTSC,CMOV,MMX,MMX+
 	if ((cputype&((1<<0)|(1<<4)|(1<<15)|(1<<22)|(1<<23))) !=
