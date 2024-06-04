@@ -19,15 +19,25 @@
 #endif
 
 #ifdef __GNUC__
-#include <stdint.h>
-#define INT_PTR intptr_t
-#define UINT_PTR uintptr_t
+  #include <stdint.h>
+  typedef  int16_t i16;
+  typedef uint16_t u16;
+  typedef  int32_t i32;
+  typedef uint32_t u32;
+  typedef  int64_t i64;
+  typedef uint64_t u64;
+#else
+  typedef              short i16;
+  typedef     unsigned short u16;
+  typedef               long i32;
+  typedef      unsigned long u32;
+  typedef          long long i64;
+  typedef unsigned long long u64;
 #endif
 
 #if !defined(_WIN32) && !defined(__DOS__)
 #include <unistd.h>
 #include <dirent.h>
-typedef long long __int64;
 static __inline int filelength (int h)
 {
 	struct stat st;
@@ -172,7 +182,7 @@ static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
-__int64 gi, gcsub[8] =
+i64 gi, gcsub[8] =
 {
 	0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,
 	0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff
@@ -223,7 +233,7 @@ static _inline long mulshr16 (long a, long d)
 	}
 }
 
-static _inline __int64 mul64 (long a, long d)
+static _inline i64 mul64 (long a, long d)
 {
 	_asm
 	{
@@ -377,7 +387,7 @@ allocnothere:;
 
 void gline (long leng, float x0, float y0, float x1, float y1)
 {
-	unsigned __int64 q;
+	i64 q;
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
 	long j;
 	cftype *c;
@@ -429,14 +439,14 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 
 		//Clip borders safely (MUST use integers!) - don't wrap around
 	if (gixy[0] < 0) j = glipos.x; else j = VSID-1-glipos.x;
-	q = mul64(gdz[0],j); q += (unsigned __int64)gpz[0];
-	if (q < (unsigned __int64)gxmax)
+	q = mul64(gdz[0],j); q += (u64)gpz[0];
+	if (q < (u64)gxmax)
 	{
 		gxmax = (long)q;
 	}
 	if (gixy[1] < 0) j = glipos.y; else j = VSID-1-glipos.y;
-	q = mul64(gdz[1],j); q += (unsigned __int64)gpz[1];
-	if (q < (unsigned __int64)gxmax)
+	q = mul64(gdz[1],j); q += (u64)gpz[1];
+	if (q < (u64)gxmax)
 	{
 		gxmax = (long)q;
 	}
@@ -1604,31 +1614,6 @@ long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 	return(1);
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern __int64 kv6colmul[256], kv6coladd[256];
-
-char ptfaces16[43][8] =
-{
-	0, 0, 0,  0,  0, 0, 0,0,  4, 0,32,96, 64, 0,32,0,  4,16,80,112,48, 16,80,0,  0,0,0,0,0,0,0,0,
-	4,64,96,112, 80,64,96,0,  6, 0,32,96,112,80,64,0,  6,16,80, 64,96,112,48,0,  0,0,0,0,0,0,0,0,
-	4, 0,16, 48, 32, 0,16,0,  6, 0,16,48, 32,96,64,0,  6, 0,16, 80,112,48,32,0,  0,0,0,0,0,0,0,0,
-	0, 0, 0,  0,  0, 0, 0,0,  0, 0, 0, 0,  0, 0, 0,0,  0, 0, 0,  0,  0, 0, 0,0,  0,0,0,0,0,0,0,0,
-	4, 0,64, 80, 16, 0,64,0,  6, 0,32,96, 64,80,16,0,  6, 0,64, 80,112,48,16,0,  0,0,0,0,0,0,0,0,
-	6, 0,64, 96,112,80,16,0,  6, 0,32,96,112,80,16,0,  6, 0,64, 96,112,48,16,0,  0,0,0,0,0,0,0,0,
-	6, 0,64, 80, 16,48,32,0,  6,16,48,32, 96,64,80,0,  6, 0,64, 80,112,48,32,0,  0,0,0,0,0,0,0,0,
-	0, 0, 0,  0,  0, 0, 0,0,  0, 0, 0, 0,  0, 0, 0,0,  0, 0, 0,  0,  0, 0, 0,0,  0,0,0,0,0,0,0,0,
-	4,32,48,112, 96,32,48,0,  6, 0,32,48,112,96,64,0,  6,16,80,112, 96,32,48,0,  0,0,0,0,0,0,0,0,
-	6,32,48,112, 80,64,96,0,  6, 0,32,48,112,80,64,0,  6,16,80, 64, 96,32,48,0,  0,0,0,0,0,0,0,0,
-	6, 0,16, 48,112,96,32,0,  6, 0,16,48,112,96,64,0,  6, 0,16, 80,112,96,32,0,
-};
-
-#ifdef __cplusplus
-}
-#endif
-
 #endif
 
 	//Updates mip-mapping
@@ -1715,9 +1700,16 @@ void uninitvoxlap ()
 
 long initvoxlap ()
 {
-	__int64 q;
+	i64 q;
 	long i, j, k, z, zz;
 	float f, ff;
+
+	if (sizeof(u16) != 2 && sizeof(i16) != 2 && \
+			sizeof(u32) != 4 && sizeof(i32) != 4 && \
+			sizeof(u64) != 8 && sizeof(i64) != 8) {
+		puts("int sizes incorrect");
+		exit(1);
+	}
 
 	  //WARNING: xres&yres are local to VOXLAP5.C so don't rely on them here!
 	if (!(radarmem = (long *)malloc(max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8))))
@@ -1860,7 +1852,7 @@ typedef struct
 } kzfilestate;
 static kzfilestate kzfs;
 
-INT_PTR kzopen (const char *filnam)
+int kzopen (const char *filnam)
 {
 	kzfs.fil = fopen(filnam,"rb");
 
@@ -1874,7 +1866,7 @@ INT_PTR kzopen (const char *filnam)
 	kzfs.pos = 0;
 	kzfs.i = 0;
 
-	return (INT_PTR)kzfs.fil;
+	return (int)kzfs.fil;
 }
 
 	//returns number of bytes copied
