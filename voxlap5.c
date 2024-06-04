@@ -112,14 +112,6 @@ extern void opticast ();
 
 	//Physics helper functions:
 extern void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
-extern double findmaxcr (double, double, double, double);
-
-	//VXL reading functions (fast!):
-extern long isvoxelsolid (long, long, long);
-extern long anyvoxelsolid (long, long, long, long);
-extern long anyvoxelempty (long, long, long, long);
-extern long getfloorz (long, long, long);
-extern long getcube (long, long, long);
 
 	//VXL MISC functions:
 extern void updatebbox (long, long, long, long, long, long, long);
@@ -128,12 +120,6 @@ extern void genmipvxl (long, long, long, long);
 
 	//Procedural texture functions:
 extern long curcolfunc (lpoint3d *);
-extern long floorcolfunc (lpoint3d *);
-extern long jitcolfunc (lpoint3d *);
-extern long manycolfunc (lpoint3d *);
-extern long sphcolfunc (lpoint3d *);
-extern long woodcolfunc (lpoint3d *);
-extern long pngcolfunc (lpoint3d *);
 
 	//ZIP functions:
 extern int kzopen (const char *);
@@ -243,36 +229,9 @@ static float gihx, gihy, gihz, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char *gstartv;
 
-long backtag, backedup = -1, bacx0, bacy0, bacx1, bacy1;
-char *bacsptr[262144];
-
-	//Flash variables
-#define LOGFLASHVANG 9
-static lpoint2d gfc[(1<<LOGFLASHVANG)*8];
-static long gfclookup[8] = {4,7,2,5,0,3,6,1}, flashcnt = 0;
-__int64 flashbrival;
-
 	//Norm flash variables
 #define GSIZ 512  //NOTE: GSIZ should be 1<<x, and must be <= 65536
 static long bbuf[GSIZ][GSIZ>>5], p2c[32], p2m[32];      //bbuf: 2.0K
-static uspoint2d ffx[((GSIZ>>1)+2)*(GSIZ>>1)], *ffxptr; // ffx:16.5K
-static long xbsox = -17, xbsoy, xbsof;
-static __int64 xbsbuf[25*5+1]; //need few bits before&after for protection
-
-	//Look tables for expandbitstack256:
-static long xbsceil[32], xbsflor[32];
-
-	//float detection & falling code variables...
-	//WARNING: VLSTSIZ,FSTKSIZ,FLCHKSIZ can all have bounds errors! :(
-#define VLSTSIZ 65536 //Theoretically should be at least: VOXSIZ\8
-#define LOGHASHEAD 12
-#define FSTKSIZ 8192
-typedef struct { long v, b; } vlstyp;
-vlstyp vlst[VLSTSIZ];
-long hhead[1<<LOGHASHEAD], vlstcnt = 0x7fffffff;
-lpoint3d fstk[FSTKSIZ]; //Note .z is actually used as a pointer, not z!
-#define FLCHKSIZ 4096
-lpoint3d flchk[FLCHKSIZ]; long flchkcnt = 0;
 
 	//Opticast global variables:
 	//radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
@@ -288,7 +247,6 @@ static castdat *angstart[MAXXDIM*4], *gscanptr;
 static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
 static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
-		 point3d ginor[4]; //Should be static, but... necessary for stupid pingball hack :/
 static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
 	//Parallaxing sky variables:
@@ -328,19 +286,6 @@ long zbufoff;
 
 #pragma warning(disable:4799) //I know how to use EMMS
 
-static _inline void fcossin (float a, float *c, float *s)
-{
-	_asm
-	{
-		fld a
-		fsincos
-		mov eax, c
-		fstp dword ptr [eax]
-		mov eax, s
-		fstp dword ptr [eax]
-	}
-}
-
 static _inline void dcossin (double a, double *c, double *s)
 {
 	_asm
@@ -362,35 +307,6 @@ static _inline void ftol (float f, long *a)
 		fld f
 		fistp dword ptr [eax]
 	}
-}
-
-static _inline void dtol (double d, long *a)
-{
-	_asm
-	{
-		mov eax, a
-		fld qword ptr d
-		fistp dword ptr [eax]
-	}
-}
-
-	//WARNING: This ASM code requires >= PPRO
-static _inline double dbound (double d, double dmin, double dmax)
-{
-	_asm
-	{
-		fld dmin
-		fld d
-		fucomi st, st(1)   ;if (d < dmin)
-		fcmovb st, st(1)   ;    d = dmin;
-		fld dmax
-		fxch st(1)
-		fucomi st, st(1)   ;if (d > dmax)
-		fcmovnb st, st(1)  ;    d = dmax;
-		fstp d
-		fucompp
-	}
-	return(d);
 }
 
 static _inline long mulshr16 (long a, long d)
@@ -446,26 +362,6 @@ skipneg1:
 			;eax-edx < 0
 		sub eax, edx
 		shr eax, 31
-	}
-}
-
-static _inline long umulshr32 (long a, long d)
-{
-	_asm
-	{
-		mov eax, a
-		mul d
-		mov eax, edx
-	}
-}
-
-static _inline long scale (long a, long d, long c)
-{
-	_asm
-	{
-		mov eax, a
-		imul d
-		idiv c
 	}
 }
 
@@ -525,230 +421,7 @@ static _inline long lbound0 (long a, long b) //b MUST be >= 0
 	return((~(a>>31))&b);
 }
 
-	//if (a < b) return(b); else if (a > c) return(c); else return(a);
-static _inline long lbound (long a, long b, long c) //c MUST be >= b
-{
-	c -= b;
-	if ((unsigned long)(a-b) <= c) return(a);
-	return((((b-a)>>31)&c) + b);
-}
-
-#define LSINSIZ 8 //Must be >= 2!
-static point2d usintab[(1<<LSINSIZ)+(1<<(LSINSIZ-2))];
-static void ucossininit ()
-{
-	long i, j;
-	double a, ai, s, si, m;
-
-	j = 0; usintab[0].y = 0.0;
-	i = (1<<LSINSIZ)-1;
-	ai = PI*(-2)/((float)(1<<LSINSIZ)); a = ((float)(-i))*ai;
-	ai *= .5; m = sin(ai)*2; s = sin(a); si = cos(a+ai)*m; m = -m*m;
-	for(;i>=0;i--)
-	{
-		usintab[i].y = s; s += si; si += s*m; //MUCH faster than next line :)
-		//usintab[i].y = sin(i*PI*2/((float)(1<<LSINSIZ)));
-		usintab[i].x = (usintab[j].y-usintab[i].y)/((float)(1<<(32-LSINSIZ)));
-		j = i;
-	}
-	for(i=(1<<(LSINSIZ-2))-1;i>=0;i--) usintab[i+(1<<LSINSIZ)] = usintab[i];
-}
-
-	//Calculates cos & sin of 32-bit unsigned long angle in ~15 clock cycles
-	//  Accuracy is approximately +/-.0001
-static _inline void ucossin (unsigned long a, float *cosin)
-{
-	float f = ((float)(a&((1<<(32-LSINSIZ))-1))); a >>= (32-LSINSIZ);
-	cosin[0] = usintab[a+(1<<(LSINSIZ-2))].x*f+usintab[a+(1<<(LSINSIZ-2))].y;
-	cosin[1] = usintab[a                 ].x*f+usintab[a                 ].y;
-}
-
-static long gkrand = 0;
-long colorjit (long i, long jitamount)
-{
-	gkrand = (gkrand*27584621)+1;
-	return((gkrand&jitamount)^i);
-}
-
-	//Note: ebx = 512 is no change
-	//If PENTIUM III:1.Replace punpcklwd&punpckldq with: pshufw mm1, mm1, 0
-	//               2.Use pmulhuw, shift by 8 & mul by 256
-	//  :(  Can't mix with floating point
-//#pragma aux colormul =
-//   "movd mm0, eax"
-//   "pxor mm1, mm1"
-//   "punpcklbw mm0, mm1"
-//   "psllw mm0, 7"
-//   "movd mm1, ebx"
-//   "punpcklwd mm1, mm1"
-//   "punpckldq mm1, mm1"
-//   "pmulhw mm0, mm1"
-//   "packsswb mm0, mm0"
-//   "movd eax, mm0"
-//   parm [eax][ebx]
-//   modify exact [eax]
-//   value [eax]
-
-long colormul (long i, long mulup8)
-{
-	long r, g, b;
-
-	r = ((((i>>16)&255)*mulup8)>>8); if (r > 255) r = 255;
-	g = ((((i>>8 )&255)*mulup8)>>8); if (g > 255) g = 255;
-	b = ((((i    )&255)*mulup8)>>8); if (b > 255) b = 255;
-	return((i&0xff000000)+(r<<16)+(g<<8)+b);
-}
-
 long curcolfunc (lpoint3d *p) { return(vx5.curcol); }
-
-long floorcolfunc (lpoint3d *p)
-{
-	char *v;
-	for(v=sptr[p->y*VSID+p->x];(p->z>v[2]) && (v[0]);v+=v[0]*4);
-	return(*(long *)&v[4]);
-}
-
-long jitcolfunc (lpoint3d *p) { return(colorjit(vx5.curcol,vx5.amount)); }
-
-static long manycolukup[64] =
-{
-	  0,  1,  2,  5, 10, 15, 21, 29, 37, 47, 57, 67, 79, 90,103,115,
-	127,140,152,165,176,188,198,208,218,226,234,240,245,250,253,254,
-	255,254,253,250,245,240,234,226,218,208,198,188,176,165,152,140,
-	128,115,103, 90, 79, 67, 57, 47, 37, 29, 21, 15, 10,  5,  2,  1
-};
-long manycolfunc (lpoint3d *p)
-{
-	return((manycolukup[p->x&63]<<16)+(manycolukup[p->y&63]<<8)+manycolukup[p->z&63]+0x80000000);
-}
-
-long sphcolfunc (lpoint3d *p)
-{
-	long i;
-	ftol(sin((p->x+p->y+p->z-vx5.cen)*vx5.daf)*-96,&i);
-	return(((i+128)<<24)|(vx5.curcol&0xffffff));
-}
-
-#define WOODXSIZ 46
-#define WOODYSIZ 24
-#define WOODZSIZ 24
-static float wx[256], wy[256], wz[256], vx[256], vy[256], vz[256];
-long woodcolfunc (lpoint3d *p)
-{
-	float col, u, a, f, dx, dy, dz;
-	long i, c, xof, yof, tx, ty, xoff;
-
-	if (*(long *)&wx[0] == 0)
-	{
-		for(i=0;i<256;i++)
-		{
-			wx[i] = WOODXSIZ * ((float)rand()/32768.0f-.5f) * .5f;
-			wy[i] = WOODXSIZ * ((float)rand()/32768.0f-.5f) * .5f;
-			wz[i] = WOODXSIZ * ((float)rand()/32768.0f-.5f) * .5f;
-
-				//UNIFORM spherical randomization (see spherand.c)
-			dz = 1.0f-(float)rand()/32768.0f*.04f;
-			a = (float)rand()/32768.0f*PI*2.0f; fcossin(a,&dx,&dy);
-			f = sqrt(1.0f-dz*dz); dx *= f; dy *= f;
-				//??z: rings,  ?z?: vertical,  z??: horizontal (nice)
-			vx[i] = dz; vy[i] = fabs(dy); vz[i] = dx;
-		}
-	}
-
-		//(tx&,ty&) = top-left corner of current panel
-	ty = p->y - (p->y%WOODYSIZ);
-	xoff = ((ty/WOODYSIZ)*(ty/WOODYSIZ)*51721 + (p->z/WOODZSIZ)*357) % WOODXSIZ;
-	tx = ((p->x+xoff) - (p->x+xoff)%WOODXSIZ) - xoff;
-
-	xof = p->x - (tx + (WOODXSIZ>>1));
-	yof = p->y - (ty + (WOODYSIZ>>1));
-
-	c = ((((tx*429 + 4695) ^ (ty*341 + 4355) ^ 13643) * 2797) & 255);
-	dx = xof - wx[c];
-	dy = yof - wy[c];
-	dz = (p->z%WOODZSIZ) - wz[c];
-
-		//u = distance to center of randomly oriented cylinder
-	u = vx[c]*dx + vy[c]*dy + vz[c]*dz;
-	u = sqrt(dx*dx + dy*dy + dz*dz - u*u);
-
-		//ring randomness
-	u += sin((float)xof*.12 + (float)yof*.15) * .5;
-	u *= (sin(u)*.05 + 1);
-
-		//Ring function: smooth saw-tooth wave
-	col = sin(u*2)*24;
-	col *= pow(1.f-vx[c],.3f);
-
-		//Thin shaded borders
-	if ((p->x-tx == 0) || (p->y-ty == 0)) col -= 5;
-	if ((p->x-tx == WOODXSIZ-1) || (p->y-ty == WOODYSIZ-1)) col -= 3;
-
-	//f = col+c*.12+72; i = ftolp3(&f);
-	  ftol(col+c*.12f+72.0f,&i);
-
-	return(colormul(vx5.curcol,i<<1));
-}
-
-long gxsizcache = 0, gysizcache = 0;
-long pngcolfunc (lpoint3d *p)
-{
-	long x, y, z, u, v;
-	float fx, fy, fz, rx, ry, rz;
-
-	if (!vx5.pic) return(vx5.curcol);
-	switch(vx5.picmode)
-	{
-		case 0:
-			x = p->x-vx5.pico.x; y = p->y-vx5.pico.y; z = p->z-vx5.pico.z;
-			u = (((x&vx5.picu.x) + (y&vx5.picu.y) + (z&vx5.picu.z))^vx5.xoru);
-			v = (((x&vx5.picv.x) + (y&vx5.picv.y) + (z&vx5.picv.z))^vx5.xorv);
-			break;
-		case 1: case 2:
-			fx = (float)p->x-vx5.fpico.x;
-			fy = (float)p->y-vx5.fpico.y;
-			fz = (float)p->z-vx5.fpico.z;
-			rx = vx5.fpicu.x*fx + vx5.fpicu.y*fy + vx5.fpicu.z*fz;
-			ry = vx5.fpicv.x*fx + vx5.fpicv.y*fy + vx5.fpicv.z*fz;
-			rz = vx5.fpicw.x*fx + vx5.fpicw.y*fy + vx5.fpicw.z*fz;
-			ftol(atan2(ry,rx)*vx5.xoru/(PI*2),&u);
-			if (vx5.picmode == 1) ftol(rz,&v);
-			else ftol((atan2(rz,sqrt(rx*rx+ry*ry))/PI+.5)*vx5.ysiz,&v);
-			break;
-		default: //case 3:
-			fx = (float)p->x-vx5.fpico.x;
-			fy = (float)p->y-vx5.fpico.y;
-			fz = (float)p->z-vx5.fpico.z;
-			ftol(vx5.fpicu.x*fx + vx5.fpicu.y*fy + vx5.fpicu.z*fz,&u);
-			ftol(vx5.fpicv.x*fx + vx5.fpicv.y*fy + vx5.fpicv.z*fz,&v);
-			break;
-	}
-	if ((unsigned long)(u-gxsizcache) >= (unsigned long)vx5.xsiz)
-		if (u < 0) gxsizcache = u-(u+1)%vx5.xsiz-vx5.xsiz+1; else gxsizcache = u-(u%vx5.xsiz);
-	if ((unsigned long)(v-gysizcache) >= (unsigned long)vx5.ysiz)
-		if (v < 0) gysizcache = v-(v+1)%vx5.ysiz-vx5.ysiz+1; else gysizcache = v-(v%vx5.ysiz);
-	return((vx5.pic[(v-gysizcache)*(vx5.bpl>>2)+(u-gxsizcache)]&0xffffff)|0x80000000);
-}
-
-	//Special case for SETSEC & SETCEI bumpmapping (vx5.picmode == 3)
-	//no safety checks, returns alpha as signed char in range: (-128 to 127)
-long hpngcolfunc (point3d *p)
-{
-	long u, v;
-	float fx, fy, fz;
-
-	fx = p->x-vx5.fpico.x;
-	fy = p->y-vx5.fpico.y;
-	fz = p->z-vx5.fpico.z;
-	ftol(vx5.fpicu.x*fx + vx5.fpicu.y*fy + vx5.fpicu.z*fz,&u);
-	ftol(vx5.fpicv.x*fx + vx5.fpicv.y*fy + vx5.fpicv.z*fz,&v);
-
-	if ((unsigned long)(u-gxsizcache) >= (unsigned long)vx5.xsiz)
-		if (u < 0) gxsizcache = u-(u+1)%vx5.xsiz-vx5.xsiz+1; else gxsizcache = u-(u%vx5.xsiz);
-	if ((unsigned long)(v-gysizcache) >= (unsigned long)vx5.ysiz)
-		if (v < 0) gysizcache = v-(v+1)%vx5.ysiz-vx5.ysiz+1; else gysizcache = v-(v%vx5.ysiz);
-	return(vx5.pic[(v-gysizcache)*(vx5.bpl>>2)+(u-gxsizcache)]>>24);
-}
 
 static long slng (const char *s)
 {
@@ -799,259 +472,6 @@ allocnothere:;
 		vbiti = 0; badcnt++;
 	} while (badcnt < 2);
 	evilquit("voxalloc: vbuf full"); return(0);
-}
-
-long isvoxelsolid (long x, long y, long z)
-{
-	char *v;
-
-	if ((unsigned long)(x|y) >= VSID) return(0);
-	v = sptr[y*VSID+x];
-	while (1)
-	{
-		if (z < v[1]) return(0);
-		if (!v[0]) return(1);
-		v += v[0]*4;
-		if (z < v[3]) return(1);
-	}
-}
-
-	//Returns 1 if any voxels in range (x,y,z0) to (x,y,z1-1) are solid, else 0
-long anyvoxelsolid (long x, long y, long z0, long z1)
-{
-	char *v;
-
-		//         v1.....v3   v1.....v3    v1.......................>
-		//                z0.........z1
-	if ((unsigned long)(x|y) >= VSID) return(0);
-	v = sptr[y*VSID+x];
-	while (1)
-	{
-		if (z1 <= v[1]) return(0);
-		if (!v[0]) return(1);
-		v += v[0]*4;
-		if (z0 < v[3]) return(1);
-	}
-}
-
-	//Returns 1 if any voxels in range (x,y,z0) to (x,y,z1-1) are empty, else 0
-long anyvoxelempty (long x, long y, long z0, long z1)
-{
-	char *v;
-
-		//         v1.....v3   v1.....v3    v1.......................>
-		//                z0.........z1
-	if ((unsigned long)(x|y) >= VSID) return(1);
-	v = sptr[y*VSID+x];
-	while (1)
-	{
-		if (z0 < v[1]) return(1);
-		if (!v[0]) return(0);
-		v += v[0]*4;
-		if (z1 <= v[3]) return(0);
-	}
-}
-
-	//Returns z of first solid voxel under (x,y,z). Returns z if in solid.
-long getfloorz (long x, long y, long z)
-{
-	char *v;
-
-	if ((unsigned long)(x|y) >= VSID) return(z);
-	v = sptr[y*VSID+x];
-	while (1)
-	{
-		if (z <= v[1]) return(v[1]);
-		if (!v[0]) break;
-		v += v[0]*4;
-		if (z < v[3]) break;
-	}
-	return(z);
-}
-
-	//Returns:
-	//   0: air
-	//   1: unexposed solid
-	//else: address to color in vbuf (this can never be 0 or 1)
-long getcube (long x, long y, long z)
-{
-	long ceilnum;
-	char *v;
-
-	if ((unsigned long)(x|y) >= VSID) return(0);
-	v = sptr[y*VSID+x];
-	while (1)
-	{
-		if (z <= v[2])
-		{
-			if (z < v[1]) return(0);
-			return((long)&v[(z-v[1])*4+4]);
-		}
-		ceilnum = v[2]-v[1]-v[0]+2;
-
-		if (!v[0]) return(1);
-		v += v[0]*4;
-
-		if (z < v[3])
-		{
-			if (z-v[3] < ceilnum) return(1);
-			return((long)&v[(z-v[3])*4]);
-		}
-	}
-}
-
-	// Inputs: uind[MAXZDIM]: uncompressed 32-bit color buffer (-1: air)
-	//         nind?[MAXZDIM]: neighbor buf:
-	//            -2: unexposed solid
-	//            -1: air
-	//    0-16777215: exposed solid (color)
-	//         px,py: parameters for setting unexposed voxel colors
-	//Outputs: cbuf[MAXCSIZ]: compressed output buffer
-	//Returns: n: length of compressed buffer (in bytes)
-long compilestack (long *uind, long *n0, long *n1, long *n2, long *n3, char *cbuf, long px, long py)
-{
-	long oz, onext, n, cp2, cp1, cp0, rp1, rp0;
-	lpoint3d p;
-
-	p.x = px; p.y = py;
-
-		//Do top slab (sky)
-	oz = -1;
-	p.z = -1; while (uind[p.z+1] == -1) p.z++;
-	onext = 0;
-	cbuf[1] = p.z+1;
-	cbuf[2] = p.z+1;
-	cbuf[3] = 0;  //Top z0 (filler, not used yet)
-	n = 4;
-	cp1 = 1; cp0 = 0;
-	rp1 = -1; rp0 = -1;
-
-	do
-	{
-			//cp2 = state at p.z-1 (0 = air, 1 = next2air, 2 = solid)
-			//cp1 = state at p.z   (0 = air, 1 = next2air, 2 = solid)
-			//cp0 = state at p.z+1 (0 = air, 1 = next2air, 2 = solid)
-		cp2 = cp1; cp1 = cp0; cp0 = 2;
-		if (p.z < MAXZDIM-2)  //Bottom must be solid!
-		{
-			if (uind[p.z+1] == -1)
-				cp0 = 0;
-			else if ((n0[p.z+1] == -1) || (n1[p.z+1] == -1) ||
-						(n2[p.z+1] == -1) || (n3[p.z+1] == -1))
-				cp0 = 1;
-		}
-
-			//Add slab
-		if (cp1 != rp0)
-		{
-			if ((!cp1) && (rp0 > 0)) { oz = p.z; }
-			else if ((rp0 < cp1) && (rp0 < rp1))
-			{
-				if (oz < 0) oz = p.z;
-				cbuf[onext] = ((n-onext)>>2); onext = n;
-				cbuf[n+1] = p.z;
-				cbuf[n+2] = p.z-1;
-				cbuf[n+3] = oz;
-				n += 4; oz = -1;
-			}
-			rp1 = rp0; rp0 = cp1;
-		}
-
-			//Add color
-		if ((cp1 == 1) || ((cp1 == 2) && ((!cp0) || (!cp2))))
-		{
-			if (cbuf[onext+2] == p.z-1) cbuf[onext+2] = p.z;
-			if (uind[p.z] == -2) *(long *)&cbuf[n] = vx5.colfunc(&p);
-								 else *(long *)&cbuf[n] = uind[p.z];
-			n += 4;
-		}
-
-		p.z++;
-	} while (p.z < MAXZDIM);
-	cbuf[onext] = 0;
-	return(n);
-}
-
-#ifdef _MSC_VER
-
-static _inline void expandbit256 (void *s, void *d)
-{
-	_asm
-	{
-		push esi
-		push edi
-		mov esi, s
-		mov edi, d
-		mov ecx, 32   ;current bit index
-		xor edx, edx  ;value of current 32-bit bits
-		jmp short in2it
-begit:lea esi, [esi+eax*4]
-		movzx eax, byte ptr [esi+3]
-		sub eax, ecx              ;xor mask [eax] for ceiling begins
-		jl short xskpc
-xdoc: mov [edi], edx
-		add edi, 4
-		mov edx, -1
-		add ecx, 32
-		sub eax, 32
-		jge short xdoc
-xskpc:and edx, xbsceil[eax*4+128] ;~(-1<<eax); xor mask [eax] for ceiling ends
-in2it:movzx eax, byte ptr [esi+1]
-		sub eax, ecx              ;xor mask [eax] for floor begins
-		jl short xskpf
-xdof: mov [edi], edx
-		add edi, 4
-		xor edx, edx
-		add ecx, 32
-		sub eax, 32
-		jge short xdof
-xskpf:or edx, xbsflor[eax*4+128] ;(-1<<eax); xor mask [eax] for floor ends
-		movzx eax, byte ptr [esi]
-		test eax, eax
-		jnz short begit
-		sub ecx, 256              ;finish writing buffer to [edi]
-		jg short xskpe
-xdoe: mov [edi], edx
-		add edi, 4
-		mov edx, -1
-		add ecx, 32
-		jle short xdoe
-xskpe:pop edi
-		pop esi
-	}
-}
-
-#endif
-
-void expandbitstack (long x, long y, __int64 *bind)
-{
-	if ((x|y)&(~(VSID-1))) { clearbuf((void *)bind,8,0L); return; }
-	expandbit256(sptr[y*VSID+x],(void *)bind);
-}
-
-void expandstack (long x, long y, long *uind)
-{
-	long z, topz;
-	char *v, *v2;
-
-	if ((x|y)&(~(VSID-1))) { clearbuf((void *)uind,MAXZDIM,0); return; }
-
-		//Expands compiled voxel info to 32-bit uind[?]
-	v = sptr[y*VSID+x]; z = 0;
-	while (1)
-	{
-		while (z < v[1]) { uind[z] = -1; z++; }
-		while (z <= v[2]) { uind[z] = (*(long *)&v[(z-v[1])*4+4]); z++; }
-		v2 = &v[(v[2]-v[1]+1)*4+4];
-
-		if (!v[0]) break;
-		v += v[0]*4;
-
-		topz = v[3]+(((long)v2-(long)v)>>2);
-		while (z < topz) { uind[z] = -2; z++; }
-		while (z < v[3]) { uind[z] = *(long *)v2; z++; v2 += 4; }
-	}
-	while (z < MAXZDIM) { uind[z] = -2; z++; }
 }
 
 void gline (long leng, float x0, float y0, float x1, float y1)
@@ -1107,19 +527,6 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 
 	gxmax = gmaxscandist;
 
-		//Hack for early-out case when looking up towards sky
-#if 0  //DOESN'T WORK WITH LOWER MIPS!
-	if (c->cy1 < 0)
-		if (gposz > 0)
-		{
-			if (dmulrethigh(-gposz,c->cx1,c->cy1,gxmax) >= 0)
-			{
-				j = scale(-gposz,c->cx1,c->cy1)+PREC; //+PREC for good luck
-				if ((unsigned long)j < (unsigned long)gxmax) gxmax = j;
-			}
-		} else gxmax = 0;
-#endif
-
 		//Clip borders safely (MUST use integers!) - don't wrap around
 	if (gixy[0] < 0) j = glipos.x; else j = VSID-1-glipos.x;
 	q = mul64(gdz[0],j); q += (unsigned __int64)gpz[0];
@@ -1165,23 +572,6 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 
 	//resp = 0;
 	grouscanasm((long)gstartv);
-	//if (resp)
-	//{
-	//   static char tempbuf[2048], tempbuf2[256];
-	//   sprintf(tempbuf,"eax:%08x\tmm0:%08x%08x\nebx:%08x\tmm1:%08x%08x\necx:%08x\tmm2:%08x%08x\nedx:%08x\tmm3:%08x%08x\nesi:%08x\tmm4:%08x%08x\nedi:%08x\tmm5:%08x%08x\nebp:%08x\tmm6:%08x%08x\nesp:%08x\tmm7:%08x%08x\n",
-	//      reax,remm[ 1],remm[ 0], rebx,remm[ 3],remm[ 2],
-	//      recx,remm[ 5],remm[ 4], redx,remm[ 7],remm[ 6],
-	//      resi,remm[ 9],remm[ 8], redi,remm[11],remm[10],
-	//      rebp,remm[13],remm[12], resp,remm[15],remm[14]);
-	//
-	//   for(j=0;j<3;j++)
-	//   {
-	//      sprintf(tempbuf2,"%d i0:%d i1:%d z0:%ld z1:%ld cx0:%08x cy0:%08x cx1:%08x cy1:%08x\n",
-	//         j,(long)cf[j].i0-(long)gscanptr,(long)cf[j].i1-(long)gscanptr,cf[j].z0,cf[j].z1,cf[j].cx0,cf[j].cy0,cf[j].cx1,cf[j].cy1);
-	//      strcat(tempbuf,tempbuf2);
-	//   }
-	//   evilquit(tempbuf);
-	//}
 #else
 //------------------------------------------------------------------------
 	ce = c; v = gstartv;
@@ -1310,17 +700,6 @@ vspan_skip:;
 	bbufx[y1>>5] &= (~p2m[y1&31]);
 	for(yy=(y1>>5)-1;yy>y;yy--) bbufx[yy] = 0;
 	return(1);
-}
-
-static long docube (long x, long y, long z)
-{
-	long x0, y0, x1, y1, g;
-
-	ffxptr = &ffx[(z+1)*z-1];
-	x0 = (long)ffxptr[x].x; x1 = (long)ffxptr[x].y;
-	y0 = (long)ffxptr[y].x; y1 = (long)ffxptr[y].y;
-	for(g=0;x0<x1;x0++) g |= vspan(x0,y0,y1);
-	return(g);
 }
 
 void hline (float x0, float y0, float x1, float y1, long *ix0, long *ix1)
@@ -2765,12 +2144,6 @@ void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
 	gcorn[3].x = yres*gihei.x+gcorn[0].x;
 	gcorn[3].y = yres*gihei.y+gcorn[0].y;
 	gcorn[3].z = yres*gihei.z+gcorn[0].z;
-	for(j=0,i=3;j<4;i=j++)
-	{
-		ginor[i].x = gcorn[i].y*gcorn[j].z - gcorn[i].z*gcorn[j].y;
-		ginor[i].y = gcorn[i].z*gcorn[j].x - gcorn[i].x*gcorn[j].z;
-		ginor[i].z = gcorn[i].x*gcorn[j].y - gcorn[i].y*gcorn[j].x;
-	}
 }
 
 void opticast ()
@@ -3091,7 +2464,6 @@ long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe
 	vbit[vbiti>>5] = (1<<vbiti)-1;
 
 	vx5.globalmass = calcglobalmass();
-	backedup = -1;
 
 	gmipnum = 1; vx5.flstnum = 0;
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
@@ -3324,8 +2696,6 @@ long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 {
 	long j, k, m, n;
 
-	printf("loadsxl %s\n", sxlnam);
-
 		//NOTE: MUST buffer file because insertsprite uses kz file code :/
 	if (!kzopen(sxlnam)) return(0);
 	sxlparslen = kzfilelength();
@@ -3530,7 +2900,6 @@ void uninitvoxlap ()
 	if (vbit) { free(vbit); vbit = 0; }
 
 	if (skylng) { free((void *)skylng); skylng = 0; }
-	if (skylat) { free((void *)skylat); skylat = 0; }
 	if (skypic) { free((void *)skypic); skypic = skyoff = 0; }
 
 	if (vx5.pic) { free(vx5.pic); vx5.pic = 0; }
@@ -3562,38 +2931,10 @@ long initvoxlap ()
 		return(-1);
 	radar = (long *)((((long)radarmem)+7)&~7);
 
-	for(i=0;i<32;i++) { xbsflor[i] = (-1<<i); xbsceil[i] = ~xbsflor[i]; }
-
 		//Lookup table to save 1 divide for gline()
 	for(i=1;i<CMPRECIPSIZ;i++) cmprecip[i] = CMPPREC/(float)i;
 
-		//Flashscan equal-angle compare table
-	for(i=0;i<(1<<LOGFLASHVANG)*8;i++)
-	{
-		if (!(i&((1<<LOGFLASHVANG)-1)))
-			j = (gfclookup[i>>LOGFLASHVANG]<<4)+8 - (1<<LOGFLASHVANG)*64;
-		gfc[i].y = j; j += 64*2;
-		ftol(sqrt((1<<(LOGFLASHVANG<<1))*64.f*64.f-gfc[i].y*gfc[i].y),&gfc[i].x);
-	}
-
-		//Init norm flash variables:
-	ff = (float)GSIZ*.5f; // /(1);
-	for(z=1;z<(GSIZ>>1);z++)
-	{
-		ffxptr = &ffx[(z+1)*z-1];
-		f = ff; ff = (float)GSIZ*.5f/((float)z+1);
-		for(zz=-z;zz<=z;zz++)
-		{
-			if (zz <= 0) i = (long)(((float)zz-.5f)*f); else i = (long)(((float)zz-.5f)*ff);
-			if (zz >= 0) j = (long)(((float)zz+.5f)*f); else j = (long)(((float)zz+.5f)*ff);
-			ffxptr[zz].x = (unsigned short)max(i+(GSIZ>>1),0);
-			ffxptr[zz].y = (unsigned short)min(j+(GSIZ>>1),GSIZ);
-		}
-	}
-	for(i=0;i<=25*5;i+=5) xbsbuf[i] = 0x00000000ffffffff;
 	for(z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
-
-	ucossininit();
 
 	memset(mixn,0,sizeof(mixn));
 
@@ -3701,13 +3042,9 @@ void uninitapp ()
 
 void doframe ()
 {
-	dpoint3d dp, dp2, dp3, dpos;
-	point3d fp, fp2, fp3, fpos;
-	lpoint3d lp, lp2;
-	double d;
+	dpoint3d dp;
 	float f, fmousx, fmousy;
-	long i, j, k, l, m, *hind, hdir;
-	char tempbuf[260];
+	long i, j, k, l;
 
 	if (!startdirectdraw(&i,&j,&k,&l)) goto skipalldraw;
 
