@@ -1,7 +1,6 @@
 .686
 .XMM
 
-USEZBUFFER EQU 1       ;To disable, put ; in front of line
 LVSID EQU 10           ;log2(VSID) - used for mip-mapping index adjustment
 VSID EQU (1 SHL LVSID) ;should match VSID in VOXLAP5.H (adjust LVSID, not this)
 LOGPREC EQU (8+12)
@@ -213,9 +212,7 @@ loop0:
 	pmulhuw mm5, mm2
 	psrlw mm5, 7
 	packuswb mm5, mm5
-ifdef USEZBUFFER
 	punpckldq mm5, mm6         ;Stuff ogx into hi part of color for Z buffer
-endif
 	por mm3, mm6               ;mm3: [ gx  0  ogx -gy]
 loop1: ;if (dmulrethigh(gylookup[edx*4],c->cx1,c->cy1,ogx) >= 0) jmp endloop1
 	pshufw mm7, mm1, 0ddh      ;mm7: [cy1 cx1 cy1 cx1]
@@ -224,13 +221,8 @@ loop1: ;if (dmulrethigh(gylookup[edx*4],c->cx1,c->cy1,ogx) >= 0) jmp endloop1
 	test eax, eax              ;if (cy1*ogx ? gy*cx1)
 	jle endloop1
 	psubd mm1, qword ptr _gi
-ifdef USEZBUFFER
 	movntq [ebx], mm5
 	sub ebx, 8
-else
-	movd [ebx], mm5
-	sub ebx, 4
-endif
 	cmp ebx, [esp+2048]
 	jnb loop1
 	jmp predeletez
@@ -261,9 +253,7 @@ loop2:
 	pmulhuw mm5, mm2
 	psrlw mm5, 7
 	packuswb mm5, mm5
-ifdef USEZBUFFER
 	punpckldq mm5, mm6         ;Stuff ogx into hi part of color for Z buffer
-endif
 	por mm3, mm6               ;mm3: [ gx  0  ogx -gy]
 loop3: ;if (dmulrethigh(gylookup[ecx*4],c->cx0,c->cy0,ogx) < 0) jmp endloop3
 	pshufw mm7, mm0, 0ddh      ;mm7: [cy0 cx0 cy0 cx0]
@@ -272,13 +262,8 @@ loop3: ;if (dmulrethigh(gylookup[ecx*4],c->cx0,c->cy0,ogx) < 0) jmp endloop3
 	test eax, eax              ;if (cy0*ogx ? gy*cx0)
 	jg endloop3
 	paddd mm0, qword ptr _gi
-ifdef USEZBUFFER
 	movntq [ebx], mm5
 	add ebx, 8
-else
-	movd [ebx], mm5
-	add ebx, 4
-endif
 	cmp ebx, [esp+4+2048]
 	jna loop3
 	jmp predeletez
@@ -310,14 +295,9 @@ drawceilloop:
 	pmulhuw mm5, mm2
 	psrlw mm5, 7
 	packuswb mm5, mm5
-ifdef USEZBUFFER
 	punpckldq mm5, mm6         ;Stuff gx into hi part of color for Z buffer
 	movntq [eax], mm5
 	add eax, 8
-else
-	movd [eax], mm5
-	add eax, 4
-endif
 	mov [esp+2048], eax
 	cmp eax, [esp+4+2048]
 	jna drawceilloop
@@ -344,14 +324,9 @@ drawflorloop:
 	pmulhuw mm5, mm2
 	psrlw mm5, 7
 	packuswb mm5, mm5
-ifdef USEZBUFFER
 	punpckldq mm5, mm6         ;Stuff gx into hi part of color for Z buffer
 	movntq [eax], mm5
 	sub eax, 8
-else
-	movd [eax], mm5   ;(Used to page fault here)
-	sub eax, 4
-endif
 	mov [esp+4+2048], eax
 	cmp eax, [esp+2048]
 	jnb drawflorloop
@@ -459,21 +434,13 @@ prebegsearchi16:
 	test eax, eax              ;if (day*ogx ? gy*dax)
 	jle begsearchi
 	movq mm1, mm5
-ifdef USEZBUFFER
 	sub edx, 16 SHL 3
-else
-	sub edx, 16 SHL 2
-endif
 	jmp prebegsearchi16
 
 	jmp begsearchi
 		;while (dmulrethigh(gylookup[v[2]+1],dax,day,ogx) < 0)
 prebegsearchi:
-ifdef USEZBUFFER
 	sub edx, 4 SHL 1             ;col -= 8;
-else
-	sub edx, 4                   ;col -= 4;
-endif
 	psubd mm1, qword ptr _gi     ;dax -= gi[0]; day -= gi[1];
 begsearchi:
 	pshufw mm7, mm1, 0ddh      ;mm7: [day dax day dax]
@@ -510,11 +477,7 @@ skipinsertloop:
 	paddd mm7, qword ptr _gi
 	movzx eax, byte ptr [3+edi+eax*4]
 	mov [esp+32+4+2048], edx        ;c[1].i1 = (long *)col;
-ifdef USEZBUFFER
 	add edx, 8                      ;c[0].i0 = (long *)(col+(4<<1));
-else
-	add edx, 4                      ;c[0].i0 = (long *)(col+4);
-endif
 	mov [esp+2048], edx
 	mov edx, eax               ;c[1].z1 = c[0].z0 = v[(v[0]<<2)+3];
 	mov [esp+8+2048], eax
@@ -632,13 +595,8 @@ endprebegloop:
 	cmp eax, ebx
 	ja short endnextloop
 endbegloop:
-ifdef USEZBUFFER
 	movntq [eax], mm5
 	add eax, 8
-else
-	movd [eax], mm5
-	add eax, 4
-endif
 	cmp eax, ebx
 	jbe short endbegloop
 endnextloop:
@@ -674,14 +632,9 @@ skysearch:
 	jnz short skysearch        ;if (cy1*xvi ? -yvi*cx1)
 
 	movd mm6, dword ptr [esi+edi*4]
-ifdef USEZBUFFER
 	punpckldq mm6, mm5
 	movntq [ebx], mm6
 	sub ebx, 8
-else
-	movd [ebx], mm6
-	sub ebx, 4
-endif
 	cmp eax, ebx
 	jbe short preskysearch
 endskyslab:

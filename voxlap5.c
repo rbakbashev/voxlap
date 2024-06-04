@@ -96,8 +96,6 @@ extern void kzclose ();
 
 //VOXLAP engine by Ken Silverman (http://advsys.net/ken)
 
-#define USEZBUFFER 1
-
 #define PREC (256*4096)
 #define CMPPREC (256*4096)
 #define FPREC (256*4096)
@@ -158,11 +156,7 @@ static char nullst = 0; //nullst always NULL string
 
 #pragma pack(push,1)
 	//Rendering variables:
-#if (USEZBUFFER == 0)
-typedef struct { long col; } castdat;
-#else
 typedef struct { long col, dist; } castdat;
-#endif
 typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
 typedef struct { unsigned short x, y; } uspoint2d;
 typedef struct { long x, y; } lpoint2d;
@@ -201,9 +195,7 @@ static long bbuf[GSIZ][GSIZ>>5], p2c[32], p2m[32];      //bbuf: 2.0K
 	//radar: 640x480 requires 1917568*2 bytes (area * 6.24*2)
 #define SCPITCH 256
 long *radar = 0, *radarmem = 0;
-#if (USEZBUFFER == 1)
 static long *zbuffermem = 0, zbuffersiz = 0;
-#endif
 static castdat *angstart[MAXXDIM*4], *gscanptr;
 #define CMPRECIPSIZ MAXXDIM+32
 static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
@@ -235,9 +227,7 @@ static long gmaxscandist;
 //long reax, rebx, recx, redx, resi, redi, rebp, resp, remm[16];
 void v5_asm_dep_unlock();
 void grouscanasm (long);
-#if (USEZBUFFER == 1)
 long zbufoff;
-#endif
 #ifdef __cplusplus
 }
 #endif
@@ -716,29 +706,6 @@ extern void *opti4asm;
 
 void (*hrend)(long,long,long,long,long,long);
 void (*vrend)(long,long,long,long,long);
-
-#if (USEZBUFFER != 1)
-void hrendnoz (long sx, long sy, long p1, long plc, long incr, long j)
-{
-	sy = ylookup[sy]+frameplace; p1 = sy+(p1<<2); sy += (sx<<2);
-	do
-	{
-		*(long *)sy = angstart[plc>>16][j].col;
-		plc += incr; sy += 4;
-	} while (sy != p1);
-}
-
-void vrendnoz (long sx, long sy, long p1, long iplc, long iinc)
-{
-	sy = ylookup[sy]+(sx<<2)+frameplace;
-	for(;sx<p1;sx++)
-	{
-		*(long *)sy = angstart[uurend[sx]>>16][iplc].col;
-		uurend[sx] += uurend[sx+MAXXDIM]; sy += 4; iplc += iinc;
-	}
-}
-
-#else
 
 #if 0
 	//Example C code
@@ -2072,8 +2039,6 @@ endv: pop edi
 	}
 }
 
-#endif
-
 void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
 					 float dahx, float dahy, float dahz)
 {
@@ -2131,9 +2096,6 @@ void opticast ()
 #endif
 	gmaxscandist = min(max(vx5.maxscandist,1),2047)*PREC;
 
-#if (USEZBUFFER != 1)
-	hrend = hrendnoz; vrend = vrendnoz;
-#else
 	if (ofogdist < 0)
 	{
 		if (cputype&(1<<25)) { hrend = hrendzsse; vrend = vrendzsse; }
@@ -2145,7 +2107,7 @@ void opticast ()
 							 else { hrend = hrendzfog3dn; vrend = vrendzfog3dn; }
 
 	}
-#endif
+
 	if (ofogdist < 0) nskypic = skypic;
 				  else { nskypic = skyoff = 0; } //Optimization hack: draw sky as pure black when using fog
 
@@ -2762,20 +2724,16 @@ void voxsetframebuffer (long p, long b, long x, long y)
 		bytesperline = b; xres = x; yres = y; xres4 = (xres<<2);
 		ylookup[0] = 0; for(i=0;i<yres;i++) ylookup[i+1] = ylookup[i]+bytesperline;
 		//gihx = gihz = (float)xres*.5f; gihy = (float)yres*.5f; //BAD!!!
-#if (USEZBUFFER == 1)
 		if ((ylookup[yres]+256 > zbuffersiz) || (!zbuffermem))  //Increase Z buffer size if too small
 		{
 			if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
 			zbuffersiz = ylookup[yres]+256;
 			if (!(zbuffermem = (long *)malloc(zbuffersiz))) evilquit("voxsetframebuffer: allocation too big");
 		}
-#endif
 	}
-#if (USEZBUFFER == 1)
 		//zbuffer aligns its memory to the same pixel boundaries as the screen!
 		//WARNING: Pentium 4's L2 cache has severe slowdowns when 65536-64 <= (zbufoff&65535) < 64
 	zbufoff = (((((long)zbuffermem)-frameplace-128)+255)&~255)+128;
-#endif
 	uurend = &uurendmem[((frameplace&4)^(((long)uurendmem)&4))>>2];
 
 	if (vx5.fogcol >= 0)
@@ -2836,9 +2794,7 @@ void uninitvoxlap ()
 	if (skylng) { free((void *)skylng); skylng = 0; }
 	if (skypic) { free((void *)skypic); skypic = skyoff = 0; }
 
-#if (USEZBUFFER == 1)
 	if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
-#endif
 	if (radarmem) { free(radarmem); radarmem = 0; radar = 0; }
 }
 
