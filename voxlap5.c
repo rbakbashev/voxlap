@@ -102,7 +102,6 @@ extern void kzclose ();
 #define CMPPREC (256*4096)
 #define FPREC (256*4096)
 #define USEV5ASM 1
-#define SCISDIST 1.0
 #define GOLDRAT 0.3819660112501052 //Golden Ratio: 1 - 1/((sqrt(5)+1)/2)
 #define ESTNORMRAD 2 //Specially optimized for 2: DON'T CHANGE unless testing!
 
@@ -2680,12 +2679,6 @@ long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 extern "C" {
 #endif
 
-extern void *caddasm;
-#define cadd4 ((point4d *)&caddasm)
-extern void *ztabasm;
-#define ztab4 ((point4d *)&ztabasm)
-extern short qsum0[4], qsum1[4], qbplbpp[4];
-extern float scisdist;
 extern __int64 kv6colmul[256], kv6coladd[256];
 
 char ptfaces16[43][8] =
@@ -2763,9 +2756,6 @@ void voxsetframebuffer (long p, long b, long x, long y)
 	frameplace = p;
 	if (x > MAXXDIM) x = MAXXDIM; //This sucks, but it crashes without it
 	if (y > MAXYDIM) y = MAXYDIM;
-
-		//Set global variables used by kv6draw's PIII asm (drawboundcube)
-	qsum1[3] = qsum1[1] = 0x7fff-y; qsum1[2] = qsum1[0] = 0x7fff-x;
 
 	if ((b != ylookup[1]) || (x != xres) || (y != yres))
 	{

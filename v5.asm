@@ -730,24 +730,10 @@ deleteloop:
 
 ;----------------------------------------------------------------------------
 
-MAXZSIZ EQU 1024 ;WARNING: THIS IS BAD SINCE KV6 format supports up to 65535!
-
-ifdef USEZBUFFER
-EXTRN _zbufoff : dword
-endif
-EXTRN _ptfaces16 : dword
-
-PUBLIC _opti4asm, _caddasm, _ztabasm, _scisdist
-PUBLIC _qsum0, _qsum1, _qbplbpp
+PUBLIC _opti4asm
 
 ALIGN 16
 _opti4asm dd 5*4 dup(0)        ;NOTE: this used by ?render
-_caddasm dd 8*4 dup(0)
-_ztabasm dd (MAXZSIZ+3)*4 dup(0)
-_scisdist dd 40800000h,0,0,0
-_qsum0 dq 0   ;[8000h-hy,8000h-hx,8000h-hy,8000h-hx]
-_qsum1 dq 0   ;[8000h-fy,8000h-fx,8000h-fy,8000h-fx]
-_qbplbpp dq 0 ;[0,0,bpl,bpp]
 
 _dep_protect_end:
 CODE ENDS
