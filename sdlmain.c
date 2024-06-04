@@ -28,98 +28,6 @@ void breath();
 long ActiveApp = 1, alwaysactive = 0;
 long xres = 640, yres = 480, colbits = 8, fullscreen = 1, maxpages = 8;
 
-//======================== CPU detection code begins ========================
-
-long cputype = 0;
-
-#if defined(_MSC_VER)
-
-static _inline long testflag (long c)
-{
-	_asm
-	{
-		mov ecx, c
-		pushfd
-		pop eax
-		mov edx, eax
-		xor eax, ecx
-		push eax
-		popfd
-		pushfd
-		pop eax
-		xor eax, edx
-		mov eax, 1
-		jne menostinx
-		xor eax, eax
-		menostinx:
-	}
-}
-
-static _inline void cpuid (long a, long *s)
-{
-	_asm
-	{
-		push ebx
-		push esi
-		mov eax, a
-		cpuid
-		mov esi, s
-		mov dword ptr [esi+0], eax
-		mov dword ptr [esi+4], ebx
-		mov dword ptr [esi+8], ecx
-		mov dword ptr [esi+12], edx
-		pop esi
-		pop ebx
-	}
-}
-
-#else
-
-static inline long testflag (long c)
-{
-	long a;
-	__asm__ __volatile__ (
-		"pushf\n\tpopl %%eax\n\tmovl %%eax, %%ebx\n\txorl %%ecx, %%eax\n\tpushl %%eax\n\t"
-		"popf\n\tpushf\n\tpopl %%eax\n\txorl %%ebx, %%eax\n\tmovl $1, %%eax\n\tjne 0f\n\t"
-		"xorl %%eax, %%eax\n\t0:"
-		: "=a" (a) : "c" (c) : "ebx","cc" );
-	return a;
-}
-
-static inline void cpuid (long a, long *s)
-{
-	__asm__ __volatile__ (
-		"cpuid\n\tmovl %%eax, (%%esi)\n\tmovl %%ebx, 4(%%esi)\n\t"
-		"movl %%ecx, 8(%%esi)\n\tmovl %%edx, 12(%%esi)"
-		: "+a" (a) : "S" (s) : "ebx","ecx","edx","memory","cc");
-}
-
-#endif
-
-	//Bit numbers of return value:
-	//0:FPU, 4:RDTSC, 15:CMOV, 22:MMX+, 23:MMX, 25:SSE, 26:SSE2, 30:3DNow!+, 31:3DNow!
-static long getcputype ()
-{
-	long i, cpb[4], cpid[4];
-	if (!testflag(0x200000)) return(0);
-	cpuid(0,cpid); if (!cpid[0]) return(0);
-	cpuid(1,cpb); i = (cpb[3]&~((1<<22)|(1<<30)|(1<<31)));
-	cpuid(0x80000000,cpb);
-	if (((unsigned long)cpb[0]) > 0x80000000)
-	{
-		cpuid(0x80000001,cpb);
-		i |= (cpb[3]&(1<<31));
-		if (!((cpid[1]^0x68747541)|(cpid[3]^0x69746e65)|(cpid[2]^0x444d4163))) //AuthenticAMD
-			i |= (cpb[3]&((1<<22)|(1<<30)));
-	}
-	if (i&(1<<25)) i |= (1<<22); //SSE implies MMX+ support
-	return(i);
-}
-
-//========================= CPU detection code ends =========================
-
-//================== Fast & accurate TIMER FUNCTIONS begins ==================
-
 void initklock ()
 {
 }
@@ -129,10 +37,7 @@ void readklock (double *tim)
 	*tim = (double)(SDL_GetTicks64() / 1000.);
 }
 
-//=================== Fast & accurate TIMER FUNCTIONS ends ===================
-
 //SDL Video VARIABLES & CODE--------------------------------------------------
-#ifndef NODRAW
 
 PALETTEENTRY pal[256];
 
@@ -207,13 +112,11 @@ long initdirectdraw(long daxres, long dayres, long dacolbits)
 {
 	Uint32 winbits;
 
-#ifndef NOINPUT
 	extern long mouse_acquire;
 	if (mouse_acquire) {
 		SDL_SetRelativeMouseMode(SDL_FALSE);
 	}
-#endif
-	
+
 	xres = daxres; yres = dayres; colbits = dacolbits;
 
 	winbits = 0;
@@ -250,11 +153,7 @@ long initdirectdraw(long daxres, long dayres, long dacolbits)
 
 	if (colbits == 8) updatepalette(0,256);
 
-#ifndef NOINPUT
-	if (mouse_acquire) {
-		SDL_SetRelativeMouseMode(SDL_TRUE);
-	}
-#endif
+	if (mouse_acquire) SDL_SetRelativeMouseMode(SDL_TRUE);
 
 	return 1;
 }
@@ -265,14 +164,10 @@ long changeres(long daxres, long dayres, long dacolbits, long dafullscreen)
 	return initdirectdraw(daxres, dayres, dacolbits);
 }
 
-#endif
-
 //SDL Input VARIABLES & CODE--------------------------------------------------
 char keystatus[256];
 #define KEYBUFSIZ 256
 static long keybuf[KEYBUFSIZ], keybufr = 0, keybufw = 0, keybufw2 = 0;
-
-#ifndef NOINPUT
 
 char ext_keystatus[256]; // +TD
 char ext_mbstatus[8] = {0}; // +TD extended mouse button status
@@ -300,8 +195,6 @@ void readmouse (float *fmousx, float *fmousy, float *fmousz, long *bstatus)
 
 	mousex = mousey = 0;
 }
-
-#endif
 
 //Quitting routines ----------------------------------------------------------
 
@@ -332,7 +225,6 @@ void evilquit (const char *str) //Evil because this function makes awful assumpt
 
 //GENERAL CODE-------------------------------------------------------------------
 
-#ifndef NOINPUT
 void setacquire (long mouse, long kbd)
 {
 	// SDL doesn't let the mouse and keyboard be grabbed independantly
@@ -353,7 +245,6 @@ void setmouseout (void (*in)(long,long), long x, long y)
 
 	SDL_WarpMouseInWindow(screen, x, y);
 }
-#endif
 
 static unsigned char keytranslation[] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 14, 15, 0, 0, 0, 28, 0, 0, 0, 0, 0, 89, 0, 0, 0, 
@@ -422,17 +313,7 @@ static void sdlmsgloop(void)
 						break;
 				}
 				break;
-#ifndef NOINPUT
-			// FIXME: mousewheel?
-				//if (zdelta > 0) ext_mbstatus[6] = 2;
-				//else if (zdelta < 0) ext_mbstatus[7] = 2;
 			case SDL_MOUSEMOTION:
-	//      if (gpMouse && ActiveApp && setmousein) {
-	//         mouse_acquire = 1;
-	//         gpMouse->Acquire(); gbstatus = 0;
-	//         setmousein(mx, my);
-	//         setmousein = NULL;
-	//      }
 				if (ActiveApp) {
 					mousex += ev.motion.xrel;
 					mousey += ev.motion.yrel;
@@ -459,7 +340,6 @@ static void sdlmsgloop(void)
 					}
 				}
 				break;
-#endif
 			case SDL_QUIT:
 				kensoundclose();
 				SDL_DestroyTexture(texture);
@@ -546,18 +426,10 @@ int main(int argc, char *argv[])
 	Uint32 sdlinitflags;
 	int i;
 	
-	cputype = getcputype();
-	if (cputype&((1<<0)+(1<<4)) != ((1<<0)+(1<<4)))
-		{ fputs("Sorry, this program requires FPU&RDTSC support (>=Pentium)", stderr); return(-1); }
-	
 	sdlinitflags = SDL_INIT_TIMER;
-#ifndef NOINPUT
 	for(i=0;i<256;i++) keystatus[i] = 0;
 	for(i=0;i<256;i++) ext_keystatus[i] = 0;
-#endif
-#ifndef NODRAW
 	sdlinitflags |= SDL_INIT_VIDEO;
-#endif
 
 	if (SDL_Init(sdlinitflags) < 0) { fputs("Failure initialising SDL.",stderr); return -1; }
 	atexit(SDL_Quit);   // In case we exit() somewhere
@@ -566,13 +438,11 @@ int main(int argc, char *argv[])
 
 	if (initapp(argc, argv) < 0) return -1;
 
-#ifndef NODRAW
 	if (!initdirectdraw(xres,yres,colbits))
 	{
 		SDL_Quit();
 		return 0;
 	}
-#endif
 
 	breath();
 	while (!quitprogram)

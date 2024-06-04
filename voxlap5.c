@@ -149,8 +149,6 @@ char tbuf[MAXCSIZ];
 long tbuf2[MAXZDIM*3];
 long templongbuf[MAXZDIM];
 
-extern long cputype; //bit25=1: SSE, bits30&31=1,1:3DNow!+
-
 static char nullst = 0; //nullst always NULL string
 
 #pragma pack(push,1)
@@ -1152,134 +1150,6 @@ endh: pop edi
 	}
 }
 
-void hrendz3dn (long sx, long sy, long p1, long plc, long incr, long j)
-{
-	_asm
-	{
-		push esi
-		push edi
-		mov eax, sy
-		mov eax, ylookup[eax*4]
-		add eax, frameplace
-		mov esi, p1
-		lea esi, [eax+esi*4]    ;esi = p1
-		mov edi, sx
-		lea edi, [eax+edi*4]    ;edi = p0
-
-		movd mm0, sx
-		punpckldq mm0, sy
-		pi2fd mm0, mm0          ;mm0: (float)sy (float)sx
-		pshufw mm2, mm0, 0xee   ;mm2: (float)sy (float)sy
-		punpckldq mm0, mm0      ;mm0: (float)sx (float)sx
-		movd mm1, optistrx
-		punpckldq mm1, optistry
-		pfmul mm0, mm1          ;mm0: (float)sx*optistry (float)sx*optistrx
-		movd mm3, optiheix
-		punpckldq mm3, optiheiy
-		pfmul mm2, mm3          ;mm2: (float)sy*optiheiy (float)sy*optiheix
-		pfadd mm0, mm2
-		movd mm3, optiaddx
-		punpckldq mm3, optiaddy ;mm3: optiaddy optiaddx
-		pfadd mm0, mm3          ;mm0: diry diry
-
-		movd mm6, plc
-		movd mm7, incr
-		mov ecx, zbufoff
-		mov edx, j
-
-beg:  pextrw eax, mm6, 1
-		mov eax, angstart[eax*4]
-		movq mm2, [eax+edx*8]   ;mm2:      dist       col
-		pshufw mm3, mm2, 0xee   ;mm3:         ?      dist
-		pi2fd mm3, mm3          ;mm3:         ?   (f)dist
-		movq mm4, mm0           ;mm4:      diry      dirx
-		pfmul mm4, mm4          ;mm4:    diry^2    dirx^2
-		pfadd mm0, mm1          ;mm0: dirx+optx diry+opty (unrelated)
-		pfacc mm4, mm4          ;mm4: (x^2+y^2)   x^2+y^2
-		pfrsqrt mm4, mm4        ;mm4: 1/sqrt(*) 1/sqrt(*)
-		pfmul mm3, mm4          ;mm3:         0    zvalue
-		paddd mm6, mm7          ;mm6:            plc+incr (unrelated)
-		movd [edi], mm2
-		movd [edi+ecx], mm3
-		add edi, 4
-		cmp edi, esi
-		jb short beg
-		pop edi
-		pop esi
-	}
-}
-
-void hrendzfog3dn (long sx, long sy, long p1, long plc, long incr, long j)
-{
-	_asm
-	{
-		push esi
-		push edi
-		mov eax, sy
-		mov eax, ylookup[eax*4]
-		add eax, frameplace
-		mov esi, p1
-		lea esi, [eax+esi*4]    ;esi = p1
-		mov edi, sx
-		lea edi, [eax+edi*4]    ;edi = p0
-
-		movd mm0, sx
-		punpckldq mm0, sy
-		pi2fd mm0, mm0          ;mm0: (float)sy (float)sx
-		pshufw mm2, mm0, 0xee   ;mm2: (float)sy (float)sy
-		punpckldq mm0, mm0      ;mm0: (float)sx (float)sx
-		movd mm1, optistrx
-		punpckldq mm1, optistry
-		pfmul mm0, mm1          ;mm0: (float)sx*optistry (float)sx*optistrx
-		movd mm3, optiheix
-		punpckldq mm3, optiheiy
-		pfmul mm2, mm3          ;mm2: (float)sy*optiheiy (float)sy*optiheix
-		pfadd mm0, mm2
-		movd mm3, optiaddx
-		punpckldq mm3, optiaddy ;mm3: optiaddy optiaddx
-		pfadd mm0, mm3          ;mm0: diry diry
-
-		pxor mm5, mm5
-
-		movd mm6, plc
-		movd mm7, incr
-		mov ecx, zbufoff
-		mov edx, j
-
-beg:  pextrw eax, mm6, 1
-		mov eax, angstart[eax*4]
-		movq mm2, [eax+edx*8]   ;mm2:      dist       col
-		pshufw mm3, mm2, 0xee   ;mm3:         ?      dist
-		pi2fd mm3, mm3          ;mm3:         ?   (f)dist
-		movq mm4, mm0           ;mm4:      diry      dirx
-		pfmul mm4, mm4          ;mm4:    diry^2    dirx^2
-		pfadd mm0, mm1          ;mm0: dirx+optx diry+opty (unrelated)
-		pfacc mm4, mm4          ;mm4: (x^2+y^2)   x^2+y^2
-		pfrsqrt mm4, mm4        ;mm4: 1/sqrt(*) 1/sqrt(*)
-		pfmul mm3, mm4          ;mm3:         0    zvalue
-		paddd mm6, mm7          ;mm6:            plc+incr (unrelated)
-
-			;Extra calculations for fog
-		pextrw eax, mm2, 3
-		punpcklbw mm2, mm5
-		movq mm4, fogcol
-		psubw mm4, mm2
-		paddw mm4, mm4
-		shr eax, 4
-		pmulhw mm4, foglut[eax*8]
-		paddw mm2, mm4
-		packuswb mm2, mm4
-
-		movd [edi], mm2
-		movd [edi+ecx], mm3
-		add edi, 4
-		cmp edi, esi
-		jb short beg
-		pop edi
-		pop esi
-	}
-}
-
 void vrendzsse (long sx, long sy, long p1, long iplc, long iinc)
 {
 	_asm
@@ -1844,154 +1714,6 @@ endv: pop edi
 	}
 }
 
-void vrendz3dn (long sx, long sy, long p1, long iplc, long iinc)
-{
-	_asm
-	{
-		push ebx
-		push esi
-		push edi
-		mov esi, p1
-		mov edi, sx
-		cmp edi, esi
-		jae short endv
-		mov eax, sy
-		mov eax, ylookup[eax*4]
-		add eax, frameplace
-		lea esi, [eax+esi*4]    ;esi = p1
-		lea edi, [eax+edi*4]    ;edi = p0
-
-		movd mm0, sx
-		punpckldq mm0, sy
-		pi2fd mm0, mm0          ;mm0: (float)sy (float)sx
-		pshufw mm2, mm0, 0xee   ;mm2: (float)sy (float)sy
-		punpckldq mm0, mm0      ;mm0: (float)sx (float)sx
-		movd mm1, optistrx
-		punpckldq mm1, optistry
-		pfmul mm0, mm1          ;mm0: (float)sx*optistry (float)sx*optistrx
-		movd mm3, optiheix
-		punpckldq mm3, optiheiy
-		pfmul mm2, mm3          ;mm2: (float)sy*optiheiy (float)sy*optiheix
-		pfadd mm0, mm2
-		movd mm3, optiaddx
-		punpckldq mm3, optiaddy ;mm3: optiaddy optiaddx
-		pfadd mm0, mm3          ;mm0: diry diry
-
-		mov ecx, zbufoff
-		mov edx, iplc
-		mov ebx, sx
-		mov eax, uurend
-		lea ebx, [eax+ebx*4]
-
-begv_3dn:
-		movd mm5, [ebx]
-		pextrw eax, mm5, 1
-		paddd mm5, [ebx+MAXXDIM*4]
-		movd [ebx], mm5
-		mov eax, angstart[eax*4]
-		movq mm2, [eax+edx*8]   ;mm2:      dist       col
-		pshufw mm3, mm2, 0xee   ;mm3:         ?      dist
-		pi2fd mm3, mm3          ;mm3:         ?   (f)dist
-		movq mm4, mm0           ;mm4:      diry      dirx
-		pfmul mm4, mm4          ;mm4:    diry^2    dirx^2
-		pfadd mm0, mm1          ;mm0: dirx+optx diry+opty (unrelated)
-		pfacc mm4, mm4          ;mm4: (x^2+y^2)   x^2+y^2
-		pfrsqrt mm4, mm4        ;mm4: 1/sqrt(*) 1/sqrt(*)
-		pfmul mm3, mm4          ;mm3:         0    zvalue
-		movd [edi], mm2
-		movd [edi+ecx], mm3
-		add edx, iinc
-		add ebx, 4
-		add edi, 4
-		cmp edi, esi
-		jb short begv_3dn
-endv: pop edi
-		pop esi
-		pop ebx
-	}
-}
-
-void vrendzfog3dn (long sx, long sy, long p1, long iplc, long iinc)
-{
-	_asm
-	{
-		push ebx
-		push esi
-		push edi
-		mov esi, p1
-		mov edi, sx
-		cmp edi, esi
-		jae short endv
-		mov eax, sy
-		mov eax, ylookup[eax*4]
-		add eax, frameplace
-		lea esi, [eax+esi*4]    ;esi = p1
-		lea edi, [eax+edi*4]    ;edi = p0
-
-		movd mm0, sx
-		punpckldq mm0, sy
-		pi2fd mm0, mm0          ;mm0: (float)sy (float)sx
-		pshufw mm2, mm0, 0xee   ;mm2: (float)sy (float)sy
-		punpckldq mm0, mm0      ;mm0: (float)sx (float)sx
-		movd mm1, optistrx
-		punpckldq mm1, optistry
-		pfmul mm0, mm1          ;mm0: (float)sx*optistry (float)sx*optistrx
-		movd mm3, optiheix
-		punpckldq mm3, optiheiy
-		pfmul mm2, mm3          ;mm2: (float)sy*optiheiy (float)sy*optiheix
-		pfadd mm0, mm2
-		movd mm3, optiaddx
-		punpckldq mm3, optiaddy ;mm3: optiaddy optiaddx
-		pfadd mm0, mm3          ;mm0: diry diry
-
-		pxor mm6, mm6
-
-		mov ecx, zbufoff
-		mov edx, iplc
-		mov ebx, sx
-		mov eax, uurend
-		lea ebx, [eax+ebx*4]
-
-begv_3dn:
-		movd mm5, [ebx]
-		pextrw eax, mm5, 1
-		paddd mm5, [ebx+MAXXDIM*4]
-		movd [ebx], mm5
-		mov eax, angstart[eax*4]
-		movq mm2, [eax+edx*8]   ;mm2:      dist       col
-		pshufw mm3, mm2, 0xee   ;mm3:         ?      dist
-		pi2fd mm3, mm3          ;mm3:         ?   (f)dist
-		movq mm4, mm0           ;mm4:      diry      dirx
-		pfmul mm4, mm4          ;mm4:    diry^2    dirx^2
-		pfadd mm0, mm1          ;mm0: dirx+optx diry+opty (unrelated)
-		pfacc mm4, mm4          ;mm4: (x^2+y^2)   x^2+y^2
-		pfrsqrt mm4, mm4        ;mm4: 1/sqrt(*) 1/sqrt(*)
-		pfmul mm3, mm4          ;mm3:         0    zvalue
-
-			;Extra calculations for fog
-		pextrw eax, mm2, 3
-		punpcklbw mm2, mm6
-		movq mm4, fogcol
-		psubw mm4, mm2
-		paddw mm4, mm4
-		shr eax, 4
-		pmulhw mm4, foglut[eax*8]
-		paddw mm2, mm4
-		packuswb mm2, mm4
-
-		movd [edi], mm2
-		movd [edi+ecx], mm3
-		add edx, iinc
-		add ebx, 4
-		add edi, 4
-		cmp edi, esi
-		jb short begv_3dn
-endv: pop edi
-		pop esi
-		pop ebx
-	}
-}
-
 void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
 					 float dahx, float dahy, float dahz)
 {
@@ -2044,14 +1766,13 @@ void opticast ()
 
 	if (ofogdist < 0)
 	{
-		if (cputype&(1<<25)) { hrend = hrendzsse; vrend = vrendzsse; }
-							 else { hrend = hrendz3dn; vrend = vrendz3dn; }
+		hrend = hrendzsse;
+		vrend = vrendzsse;
 	}
 	else
 	{
-		if (cputype&(1<<25)) { hrend = hrendzfogsse; vrend = vrendzfogsse; }
-							 else { hrend = hrendzfog3dn; vrend = vrendzfog3dn; }
-
+		hrend = hrendzfogsse;
+		vrend = vrendzfogsse;
 	}
 
 	if (ofogdist < 0) nskypic = skypic;
@@ -2750,15 +2471,6 @@ long initvoxlap ()
 	long i, j, k, z, zz;
 	float f, ff;
 
-		//CPU Must have: FPU,RDTSC,CMOV,MMX,MMX+
-	if ((cputype&((1<<0)|(1<<4)|(1<<15)|(1<<22)|(1<<23))) !=
-					 ((1<<0)|(1<<4)|(1<<15)|(1<<22)|(1<<23))) return(-1);
-		//CPU UNSUPPORTED!
-	if ((!(cputype&(1<<25))) && //SSE
-		(!((cputype&((1<<30)|(1<<31))) == ((1<<30)|(1<<31))))) //3DNow!+
-		return(-1);
-	//if (cputype&(1<<25)) fixsse(); //SSE
-
 	  //WARNING: xres&yres are local to VOXLAP5.C so don't rely on them here!
 	if (!(radarmem = (long *)malloc(max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8))))
 		return(-1);
@@ -2834,16 +2546,6 @@ long initapp (long argc, char **argv)
 	if (initvoxlap() < 0) return(-1);
 
 	setsideshades(0,4,1,3,2,2);
-
-		//AthlonXP 2000+: SSE:26.76ms, 3DN:27.34ms, SSE2:28.93ms
-	extern long cputype;
-	switch(2) // SSE2
-	{
-		case 0: cputype &= ~((1<<25)|(1<<26)); cputype |= ((1<<30)|(1<<31)); break;
-		case 1: cputype |= (1<<25); cputype &= ~(1<<26); cputype &= ~((1<<30)|(1<<31)); break;
-		case 2: cputype |= ((1<<25)|(1<<26)); cputype &= ~((1<<30)|(1<<31)); break;
-		default:;
-	}
 
 	if (initmap() < 0) return(-1);
 
