@@ -392,35 +392,6 @@ void arg2filename (const char *oarg, const char *ext, char *narg)
 	if (!strstr(narg,ext)) strcat(narg,ext);
 }
 
-	//Precision: bits 8-9:, Rounding: bits 10-11:
-	//00 = 24-bit    (0)   00 = nearest/even (0)
-	//01 = reserved  (1)   01 = -inf         (4)
-	//10 = 53-bit    (2)   10 = inf          (8)
-	//11 = 64-bit    (3)   11 = 0            (c)
-long fpuasm[2];
-
-#if defined(_MSC_VER)
-static _inline void fpuinit (long a)
-{
-	_asm
-	{
-		mov eax, a
-		fninit
-		fstcw fpuasm
-		and byte ptr fpuasm[1], 0f0h
-		or byte ptr fpuasm[1], al
-		fldcw fpuasm
-	}
-}
-#else
-void fpuinit (long a)
-{
-	__asm__ __volatile__ (
-		"fninit; fstcw fpuasm; andb $240, fpuasm(,1); orb %%al, fpuasm(,1); fldcw fpuasm;"
-		: : "a" (a) : "memory","cc");
-}
-#endif
-
 int main(int argc, char *argv[])
 {
 	Uint32 sdlinitflags;
@@ -449,7 +420,7 @@ int main(int argc, char *argv[])
 	{
 		SDL_Delay(10);
 
-		if (alwaysactive || ActiveApp) { fpuinit(0x2); doframe(); }
+		if (alwaysactive || ActiveApp) { doframe(); }
 		else SDL_WaitEvent(NULL);
 		breath();
 	}
