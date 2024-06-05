@@ -78,7 +78,7 @@ typedef struct { double x, y, z; } dpoint3d;
 struct
 {
 		//Opticast variables:
-	long anginc, maxscandist, vxlmipuse;
+	long anginc, maxscandist;
 } vx5;
 
 	//Initialization functions:
@@ -97,9 +97,7 @@ static void opticast ();
 static void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
 
 	//VXL MISC functions:
-static void updatebbox (long, long, long, long, long, long, long);
-static void updatevxl ();
-static void genmipvxl (long, long, long, long);
+static void updatebbox (long, long, long, long, long, long);
 
 	//ZIP functions:
 static int kzopen (const char *);
@@ -132,10 +130,6 @@ static long *vbuf = 0, *vbit = 0, vbiti;
 //      z1c: z bottom of floor color list MINUS 1! - needed to calculate
 //             slab size with slng() and used as a separator for fcol/ccol
 //       z0: z ceiling (bottom of ceiling color list)
-
-	//Memory management variables:
-#define MAXCSIZ 1028
-static char tbuf[MAXCSIZ];
 
 #pragma pack(push,1)
 	//Rendering variables:
@@ -174,7 +168,7 @@ static point3d gcorn[4];
 static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
 static i64 gi;
-static long gylookup[512+36], gmipnum = 0; //256+4+128+4+64+4+...
+static long gylookup[512+36]; //256+4+128+4+64+4+...
 static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
@@ -249,57 +243,6 @@ static _inline long lbound0 (long a, long b) //b MUST be >= 0
 {
 	if ((unsigned long)a <= b) return(a);
 	return((~(a>>31))&b);
-}
-
-static long slng (const char *s)
-{
-	const char *v;
-
-	for(v=s;v[0];v+=v[0]*4);
-	return((long)v-(long)s+(v[2]-v[1]+1)*4+4);
-}
-
-static void voxdealloc (const char *v)
-{
-	long i, j;
-	i = (((long)v-(long)vbuf)>>2); j = (slng(v)>>2)+i;
-#if 0
-	while (i < j) { vbit[i>>5] &= ~(1<<i); i++; }
-#else
-	if (!((j^i)&~31))
-		vbit[i>>5] &= ~(p2m[j&31]^p2m[i&31]);
-	else
-	{
-		vbit[i>>5] &=   p2m[i&31];  i >>= 5;
-		vbit[j>>5] &= (~p2m[j&31]); j >>= 5;
-		for(j--;j>i;j--) vbit[j] = 0;
-	}
-#endif
-}
-
-	//Note: danum MUST be a multiple of 4!
-static char *voxalloc (long danum)
-{
-	long i, badcnt, p0, p1, vend;
-
-	badcnt = 0; danum >>= 2; vend = (VOXSIZ>>2)-danum;
-	do
-	{
-		for(;vbiti<vend;vbiti+=danum)
-		{
-			if (vbit[vbiti>>5]&(1<<vbiti)) continue;
-			for(p0=vbiti;(!(vbit[(p0-1)>>5]&(1<<(p0-1))));p0--);
-			for(p1=p0+danum-1;p1>vbiti;p1--)
-				if (vbit[p1>>5]&(1<<p1)) goto allocnothere;
-
-			vbiti = p0+danum;
-			for(i=p0;i<vbiti;i++) vbit[i>>5] |= (1<<i);
-			return((char *)(&vbuf[p0]));
-allocnothere:;
-		}
-		vbiti = 0; badcnt++;
-	} while (badcnt < 2);
-	evilquit("voxalloc: vbuf full"); return(0);
 }
 
 static void gline (long leng, float x0, float y0, float x1, float y1)
@@ -826,8 +769,7 @@ static long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint
 	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
 	vbit[vbiti>>5] = (1<<vbiti)-1;
 
-	gmipnum = 1;
-	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
+	updatebbox(0,0,0,VSID,VSID,MAXZDIM);
 	return(1);
 }
 
@@ -855,239 +797,19 @@ static void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint
 	ifo->z = ox*rr[2] + oy*rr[5] + oz*rr[8];
 }
 
-static long mixc[MAXZDIM>>1][8]; //4K
-static long mixn[MAXZDIM>>1];    //0.5K
-static void genmipvxl (long x0, long y0, long x1, long y1)
-{
-	long i, n, oldn, x, y, z, xsiz, ysiz, zsiz, oxsiz, oysiz;
-	long cz, oz, nz, zz, besti, cstat, curz[4], curzn[4][4], mipnum, mipmax;
-	char *v[4], *tv, **sr, **sw, **ssr, **ssw;
-
-	if ((!(x0|y0)) && (x1 == VSID) && (y1 == VSID)) mipmax = vx5.vxlmipuse;
-															 else mipmax = gmipnum;
-	if (mipmax <= 0) return;
-	mipnum = 1;
-
-	xsiz = VSID; ysiz = VSID; zsiz = MAXZDIM;
-	ssr = sptr; ssw = sptr+xsiz*ysiz;
-	while ((xsiz > 1) && (ysiz > 1) && (zsiz > 1) && (mipnum < mipmax))
-	{
-		oxsiz = xsiz; xsiz >>= 1;
-		oysiz = ysiz; ysiz >>= 1;
-						  zsiz >>= 1;
-
-		x0--; if (x0 < 0) x0 = 0;
-		y0--; if (y0 < 0) y0 = 0;
-		x1++; if (x1 > VSID) x1 = VSID;
-		y1++; if (y1 > VSID) y1 = VSID;
-
-		x0 >>= 1; x1 = ((x1+1)>>1);
-		y0 >>= 1; y1 = ((y1+1)>>1);
-		for(y=y0;y<y1;y++)
-		{
-			sr = ssr+oxsiz*(y<<1)+(x0<<1);
-			sw = ssw+xsiz*y+x0;
-			for(x=x0;x<x1;x++)
-			{
-					//ÚÄÄÄÂÄÄÄÂÄÄÄÂÄÄÄ¿
-					//³npt³z1 ³z1c³dum³
-					//³ b ³ g ³ r ³ i ³
-					//³ b ³ g ³ r ³ i ³
-					//³npt³z1 ³z1c³z0 ³
-					//³ b ³ g ³ r ³ i ³
-					//ÀÄÄÄÁÄÄÄÁÄÄÄÁÄÄÄÙ
-				v[0] = sr[      0];
-				v[1] = sr[      1];
-				v[2] = sr[oysiz  ];
-				v[3] = sr[oysiz+1];
-				for(i=3;i>=0;i--)
-				{
-					curz[i] = curzn[i][0] = (long)v[i][1];
-					curzn[i][1] = ((long)v[i][2])+1;
-
-					tv = v[i];
-					while (1)
-					{
-						oz = (long)tv[1];
-						for(z=oz;z<=((long)tv[2]);z++)
-						{
-							nz = (z>>1);
-							mixc[nz][mixn[nz]++] = *(long *)(&tv[((z-oz)<<2)+4]);
-						}
-						z = (z-oz) - (((long)tv[0])-1);
-						if (!tv[0]) break;
-						tv += (((long)tv[0])<<2);
-						oz = (long)tv[3];
-						for(;z<0;z++)
-						{
-							nz = ((z+oz)>>1);
-							mixc[nz][mixn[nz]++] = *(long *)(&tv[z<<2]);
-						}
-					}
-				}
-				cstat = 0; oldn = 0; n = 4; tbuf[3] = 0; z = 0x80000000;
-				while (1)
-				{
-					oz = z;
-
-						//z,besti = min,argmin(curz[0],curz[1],curz[2],curz[3])
-					besti = (((unsigned long)(curz[1]-curz[    0]))>>31);
-						 i = (((unsigned long)(curz[3]-curz[    2]))>>31)+2;
-					besti +=(((( signed long)(curz[i]-curz[besti]))>>31)&(i-besti));
-					z = curz[besti]; if (z >= MAXZDIM) break;
-
-					if ((!cstat) && ((z>>1) >= ((oz+1)>>1)))
-					{
-						if (oz >= 0)
-						{
-							tbuf[oldn] = ((n-oldn)>>2);
-							tbuf[oldn+2]--;
-							tbuf[n+3] = ((oz+1)>>1);
-							oldn = n; n += 4;
-						}
-						tbuf[oldn] = 0;
-						tbuf[oldn+1] = tbuf[oldn+2] = (z>>1); cz = -1;
-					}
-					if (cstat&0x1111)
-					{
-						if (((((long)tbuf[oldn+2])<<1)+1 >= oz) && (cz < 0))
-						{
-							while ((((long)tbuf[oldn+2])<<1) < z)
-							{
-								zz = (long)tbuf[oldn+2];
-
-								*(long *)&tbuf[n] = mixc[zz][rand()%mixn[zz]];
-								mixn[zz] = 0;
-
-								tbuf[oldn+2]++; n += 4;
-							}
-						}
-						else
-						{
-							if (cz < 0) cz = (oz>>1);
-							else if ((cz<<1)+1 < oz)
-							{
-									//Insert fake slab
-								tbuf[oldn] = ((n-oldn)>>2);
-								tbuf[oldn+2]--;
-								tbuf[n] = 0;
-								tbuf[n+1] = tbuf[n+2] = tbuf[n+3] = cz;
-								oldn = n; n += 4;
-								cz = (oz>>1);
-							}
-							while ((cz<<1) < z)
-							{
-								*(long *)&tbuf[n] = mixc[cz][rand()%mixn[cz]];
-								mixn[cz] = 0;
-
-								cz++; n += 4;
-							}
-						}
-					}
-
-					i = (besti<<2);
-					cstat = (((1<<i)+cstat)&0x3333); //--33--22--11--00
-					switch ((cstat>>i)&3)
-					{
-						case 0: curz[besti] = curzn[besti][0]; break;
-						case 1: curz[besti] = curzn[besti][1]; break;
-						case 2:
-							if (!(v[besti][0])) { curz[besti] = MAXZDIM; }
-							else
-							{
-								tv = v[besti]; i = (((long)tv[2])-((long)tv[1])+1)-(((long)tv[0])-1);
-								tv += (((long)tv[0])<<2);
-								curz[besti] = ((long)(tv[3])) + i;
-								curzn[besti][3] = (long)(tv[3]);
-								curzn[besti][0] = (long)(tv[1]);
-								curzn[besti][1] = ((long)tv[2])+1;
-								v[besti] = tv;
-							}
-							break;
-						case 3: curz[besti] = curzn[besti][3]; break;
-						//default: __assume(0); //tells MSVC default can't be reached
-					}
-				}
-				tbuf[oldn+2]--;
-				if (cz >= 0)
-				{
-					tbuf[oldn] = ((n-oldn)>>2);
-					tbuf[n] = 0;
-					tbuf[n+1] = tbuf[n+3] = cz;
-					tbuf[n+2] = cz-1;
-					n += 4;
-				}
-
-					//De-allocate column (x,y) if it exists
-				if (sw[0]) voxdealloc(sw[0]);
-
-					//Allocate & copy to new column (x,y)
-				sw[0] = voxalloc(n);
-				copybuf((void *)tbuf,(void *)sw[0],n>>2);
-				sw++; sr += 2;
-			}
-			sr += ysiz*2;
-		}
-		ssr = ssw; ssw += xsiz*ysiz;
-		mipnum++; if (mipnum > gmipnum) gmipnum = mipnum;
-	}
-
-		//Remove extra mips (bbox must be 0,0,VSID,VSID to get inside this)
-	while ((xsiz > 1) && (ysiz > 1) && (zsiz > 1) && (mipnum < gmipnum))
-	{
-		xsiz >>= 1; ysiz >>= 1; zsiz >>= 1;
-		for(i=xsiz*ysiz;i>0;i--)
-		{
-			if (ssw[0]) voxdealloc(ssw[0]); //De-allocate column if it exists
-			ssw++;
-		}
-		gmipnum--;
-	}
-
-	emms();
-}
-
-	//Updates mip-mapping
-typedef struct { long x0, y0, z0, x1, y1, z1, csgdel; } bboxtyp;
+typedef struct { long x0, y0, z0, x1, y1, z1; } bboxtyp;
 #define BBOXSIZ 256
 static bboxtyp bbox[BBOXSIZ];
 static long bboxnum = 0;
-static void updatevxl ()
+
+static void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1)
 {
-	long i;
-
-	for(i=bboxnum-1;i>=0;i--)
-	{
-		if (vx5.vxlmipuse > 1)
-			genmipvxl(bbox[i].x0,bbox[i].y0,bbox[i].x1,bbox[i].y1);
-	}
-	bboxnum = 0;
-}
-
-static void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1, long csgdel)
-{
-	long i;
-
 	if ((x0 >= x1) || (y0 >= y1) || (z0 >= z1)) return;
-	for(i=bboxnum-1;i>=0;i--)
-	{
-		if ((x0 >= bbox[i].x1) || (bbox[i].x0 >= x1)) continue;
-		if ((y0 >= bbox[i].y1) || (bbox[i].y0 >= y1)) continue;
-		if ((z0 >= bbox[i].z1) || (bbox[i].z0 >= z1)) continue;
-		if (bbox[i].x0 < x0) x0 = bbox[i].x0;
-		if (bbox[i].y0 < y0) y0 = bbox[i].y0;
-		if (bbox[i].z0 < z0) z0 = bbox[i].z0;
-		if (bbox[i].x1 > x1) x1 = bbox[i].x1;
-		if (bbox[i].y1 > y1) y1 = bbox[i].y1;
-		if (bbox[i].z1 > z1) z1 = bbox[i].z1;
-		csgdel |= bbox[i].csgdel;
-		bboxnum--; bbox[i] = bbox[bboxnum];
-	}
+
 	bbox[bboxnum].x0 = x0; bbox[bboxnum].x1 = x1;
 	bbox[bboxnum].y0 = y0; bbox[bboxnum].y1 = y1;
 	bbox[bboxnum].z0 = z0; bbox[bboxnum].z1 = z1;
-	bbox[bboxnum].csgdel = csgdel; bboxnum++;
-	if (bboxnum >= BBOXSIZ) updatevxl();
+	bboxnum++;
 }
 
 //----------------------------------------------------------------------------
@@ -1146,13 +868,8 @@ static long initvoxlap ()
 
 	for(long z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
 
-	memset(mixn,0,sizeof(mixn));
-
 	vx5.anginc = 1; //Higher=faster (1:full,2:half)
 	vx5.maxscandist = 256; //must be <= 2047
-	vx5.vxlmipuse = 1;
-
-	gmipnum = 0;
 
 	return(0);
 }
@@ -1174,10 +891,6 @@ static long initmap ()
 		printf("failed to load '%s'\n", vxlnam);
 		return -1;
 	}
-
-	vx5.vxlmipuse = 9;
-
-	updatevxl();
 
 	vx5.maxscandist = (long)(VSID*1.42);
 
@@ -1248,8 +961,6 @@ skipalldraw:;
 	ipos.x += ivel.x*f;
 	ipos.y += ivel.y*f;
 	ipos.z += ivel.z*f;
-
-	updatevxl();
 }
 
 /// ------- KPLIB code begins
