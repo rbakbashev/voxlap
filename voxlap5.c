@@ -28,13 +28,6 @@ typedef struct { float x, y, z; } point3d;
 typedef struct { double x, y, z; } dpoint3d;
 #pragma pack(pop)
 
-	//Voxlap5 shared global variables:
-struct
-{
-		//Opticast variables:
-	long anginc, maxscandist;
-} vx5;
-
 	//File related functions:
 static long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 
@@ -57,6 +50,9 @@ static void kzclose ();
 #define CMPPREC (256*4096)
 
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
+
+//Opticast variables:
+long anginc, maxscandist;
 
 #define VOXSIZ VSID*VSID*128
 static char *sptr[(VSID*VSID*4)/3];
@@ -493,7 +489,7 @@ static void opticast ()
 	gposxfrac[1] = gipos.x - (float)glipos.x; gposxfrac[0] = 1-gposxfrac[1];
 	gposyfrac[1] = gipos.y - (float)glipos.y; gposyfrac[0] = 1-gposyfrac[1];
 	for(i=0;i<256+4;i++) gylookup[i] = (i*PREC-gposz);
-	gmaxscandist = min(max(vx5.maxscandist,1),2047)*PREC;
+	gmaxscandist = min(max(maxscandist,1),2047)*PREC;
 
 	gstartv = (char *)*(long *)gpixy;
 	if (glipos.z >= gstartv[1])
@@ -513,8 +509,8 @@ static void opticast ()
 	cx = gistr.z*f + gihx;
 	cy = gihei.z*f + gihy;
 
-	wx0 = (float)(-(vx5.anginc)); wx1 = (float)(xres-1+(vx5.anginc));
-	wy0 = (float)(-(vx5.anginc)); wy1 = (float)(yres-1+(vx5.anginc));
+	wx0 = (float)(-(anginc)); wx1 = (float)(xres-1+(anginc));
+	wy0 = (float)(-(anginc)); wy1 = (float)(yres-1+(anginc));
 	ftol(wx0,&iwx0); ftol(wx1,&iwx1);
 	ftol(wy0,&iwy0); ftol(wy1,&iwy1);
 
@@ -547,7 +543,7 @@ static void opticast ()
 	ftol(cx*65536,&cx16);
 	ftol(cy*65536,&cy16);
 
-	ftol((x1-x0)/vx5.anginc,&j);
+	ftol((x1-x0)/anginc,&j);
 	if ((fy < 0) && (j > 0)) //(cx,cy),(x0,wy0),(x1,wy0)
 	{
 		ff = (x1-x0) / (float)j; grd = 1.0f / (wy0-cy);
@@ -581,7 +577,7 @@ static void opticast ()
 		}
 	}
 
-	ftol((y2-y1)/vx5.anginc,&j);
+	ftol((y2-y1)/anginc,&j);
 	if ((gx > 0) && (j > 0)) //(cx,cy),(wx1,y1),(wx1,y2)
 	{
 		ff = (y2-y1) / (float)j; grd = 1.0f / (wx1-cx);
@@ -616,7 +612,7 @@ static void opticast ()
 		}
 	}
 
-	ftol((x2-x3)/vx5.anginc,&j);
+	ftol((x2-x3)/anginc,&j);
 	if ((gy > 0) && (j > 0)) //(cx,cy),(x2,wy1),(x3,wy1)
 	{
 		ff = (x2-x3) / (float)j; grd = 1.0f / (wy1-cy);
@@ -650,7 +646,7 @@ static void opticast ()
 		}
 	}
 
-	ftol((y3-y0)/vx5.anginc,&j);
+	ftol((y3-y0)/anginc,&j);
 	if ((fx < 0) && (j > 0)) //(cx,cy),(wx0,y3),(wx0,y0)
 	{
 		ff = (y3-y0) / (float)j; grd = 1.0f / (wx0-cx);
@@ -788,7 +784,7 @@ static long initmap ()
 		return -1;
 	}
 
-	vx5.maxscandist = (long)(VSID*1.42);
+	maxscandist = (long)(VSID*1.42);
 
 	return 0;
 }
@@ -808,8 +804,8 @@ long initapp (long argc, char **argv)
 
 	for(long z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
 
-	vx5.anginc = 1; //Higher=faster (1:full,2:half)
-	vx5.maxscandist = 256; //must be <= 2047
+	anginc = 1; //Higher=faster (1:full,2:half)
+	maxscandist = 256; //must be <= 2047
 
 	if (initmap() < 0) return(-1);
 
