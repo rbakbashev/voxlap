@@ -56,6 +56,8 @@ static void kzclose ();
 #define PREC (256*4096)
 #define CMPPREC (256*4096)
 
+static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
+
 #define VOXSIZ VSID*VSID*128
 static char *sptr[(VSID*VSID*4)/3];
 static long *vbuf = 0;
@@ -365,16 +367,25 @@ static void hline (float x0, float y0, float x1, float y1, long *ix0, long *ix1)
 
 	dyx = (y1-y0) * grd; //grd = 1/(x1-x0)
 
-		  if (y0 < wy0) ftol((wy0-y0)/dyx+x0,ix0);
-	else if (y0 > wy1) ftol((wy1-y0)/dyx+x0,ix0);
-	else ftol(x0,ix0);
-		  if (y1 < wy0) ftol((wy0-y0)/dyx+x0,ix1);
-	else if (y1 > wy1) ftol((wy1-y0)/dyx+x0,ix1);
-	else ftol(x1,ix1);
+	if (y0 < wy0)
+		ftol((wy0-y0)/dyx+x0,ix0);
+	else if (y0 > wy1)
+		ftol((wy1-y0)/dyx+x0,ix0);
+	else
+		ftol(x0,ix0);
+
+	if (y1 < wy0)
+		ftol((wy0-y0)/dyx+x0,ix1);
+	else if (y1 > wy1)
+		ftol((wy1-y0)/dyx+x0,ix1);
+	else
+		ftol(x1,ix1);
+
 	if ((*ix0) < iwx0) (*ix0) = iwx0;
 	if ((*ix0) > iwx1) (*ix0) = iwx1; //(*ix1) = min(max(*ix1,wx0),wx1);
-	gline(labs((*ix1)-(*ix0)),(float)(*ix0),((*ix0)-x1)*dyx + y1,
-									  (float)(*ix1),((*ix1)-x1)*dyx + y1);
+
+	gline(labs((*ix1)-(*ix0)), (float)(*ix0), ((*ix0)-x1)*dyx + y1,
+	                           (float)(*ix1), ((*ix1)-x1)*dyx + y1);
 }
 
 static void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
@@ -383,19 +394,26 @@ static void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
 
 	dxy = (x1-x0) * grd; //grd = 1/(y1-y0)
 
-		  if (x0 < wx0) ftol((wx0-x0)/dxy+y0,iy0);
-	else if (x0 > wx1) ftol((wx1-x0)/dxy+y0,iy0);
-	else ftol(y0,iy0);
-		  if (x1 < wx0) ftol((wx0-x0)/dxy+y0,iy1);
-	else if (x1 > wx1) ftol((wx1-x0)/dxy+y0,iy1);
-	else ftol(y1,iy1);
+	if (x0 < wx0)
+		ftol((wx0-x0)/dxy+y0,iy0);
+	else if (x0 > wx1)
+		ftol((wx1-x0)/dxy+y0,iy0);
+	else
+		ftol(y0,iy0);
+
+	if (x1 < wx0)
+		ftol((wx0-x0)/dxy+y0,iy1);
+	else if (x1 > wx1)
+		ftol((wx1-x0)/dxy+y0,iy1);
+	else
+		ftol(y1,iy1);
+
 	if ((*iy0) < iwy0) (*iy0) = iwy0;
 	if ((*iy0) > iwy1) (*iy0) = iwy1;
-	gline(labs((*iy1)-(*iy0)),((*iy0)-y1)*dxy + x1,(float)(*iy0),
-									  ((*iy1)-y1)*dxy + x1,(float)(*iy1));
-}
 
-static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
+	gline(labs((*iy1)-(*iy0)), ((*iy0)-y1)*dxy + x1, (float)(*iy0),
+	                           ((*iy1)-y1)*dxy + x1, (float)(*iy1));
+}
 
 static void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 {
