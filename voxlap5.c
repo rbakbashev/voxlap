@@ -103,9 +103,7 @@ static void kzclose ();
 
 #define VOXSIZ VSID*VSID*128
 static char *sptr[(VSID*VSID*4)/3];
-static long *vbuf = 0, *vbit = 0, vbiti;
-	//WARNING: loaddta uses last 2MB of vbuf; vbuf:[VOXSIZ>>2], vbit:[VOXSIZ>>7]
-	//WARNING: loadpng uses last 4MB of vbuf; vbuf:[VOXSIZ>>2], vbit:[VOXSIZ>>7]
+static long *vbuf = 0;
 
 //                     ÚÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄ¿
 //        vbuf format: ³   0:   ³   1:   ³   2:   ³   3:   ³
@@ -705,7 +703,6 @@ static long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint
 	char *v;
 
 	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
-	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
 
 	if (!kzopen(lodfilnam)) return(0);
 	fsiz = kzfilelength();
@@ -730,10 +727,6 @@ static long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint
 	kzclose();
 
 	memset(&sptr[VSID*VSID],0,sizeof(sptr)-VSID*VSID*4);
-	vbiti = (((long)v-(long)vbuf)>>2); //# vbuf longs/vbit bits allocated
-	clearbuf((void *)vbit,vbiti>>5,-1);
-	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
-	vbit[vbiti>>5] = (1<<vbiti)-1;
 
 	return(1);
 }
@@ -851,7 +844,6 @@ long initapp (long argc, char **argv)
 void uninitapp ()
 {
 	if (vbuf) { free(vbuf); vbuf = 0; }
-	if (vbit) { free(vbit); vbit = 0; }
 
 	if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
 	if (radarmem) { free(radarmem); radarmem = 0; radar = 0; }
