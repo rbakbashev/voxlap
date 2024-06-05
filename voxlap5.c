@@ -221,14 +221,6 @@ static _inline void clearbuf (void *d, long c, long a)
 	memset(d, a, c << 2);
 }
 
-#if defined(_MSC_VER)
-  #define emms() { _asm { emms } }
-#elif defined(__GNUC__)
-  #define emms() { __asm__ __volatile__ ( "emms" ); }
-#else
-  #error "Unsupported compiler"
-#endif
-
 	//if (a < 0) return(0); else if (a > b) return(b); else return(a);
 static _inline long lbound0 (long a, long b) //b MUST be >= 0
 {
@@ -443,14 +435,6 @@ static void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
 
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 
-#if defined(_MSC_VER)
-  #define ALIGN(n) __declspec(align(n))
-#elif defined(__GNUC__)
-  #define ALIGN(n) __attribute__((aligned(n)))
-#else
-  #error "Unsupported compiler"
-#endif
-
 static void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 {
 	long p0, i; float dirx, diry;
@@ -614,7 +598,6 @@ static void opticast ()
 				while ((p1 < xres) && (u1 < j)) { u1 += ui; p1++; }
 				if (p0 < p1) hrendz(p0,sy,p1,u,ui,i);
 			}
-			emms();
 		}
 	}
 
@@ -650,7 +633,6 @@ static void opticast ()
 			if (giforzsgn < 0)
 				  { for(sy=p0;sy<p1;sy++) vrendz(lastx[sy],sy,xres,lastx[sy],1); }
 			else { for(sy=p0;sy<p1;sy++) vrendz(lastx[sy],sy,xres,-lastx[sy],-1); }
-			emms();
 		}
 	}
 
@@ -685,7 +667,6 @@ static void opticast ()
 				while ((p1 < xres) && (u1 < j)) { u1 += ui; p1++; }
 				if (p0 < p1) hrendz(p0,sy,p1,u,ui,i);
 			}
-			emms();
 		}
 	}
 
@@ -719,7 +700,6 @@ static void opticast ()
 				while ((p1 < yres) && (u < j)) { u += ui; lastx[p1++] = sx; }
 			}
 			for(sy=p0;sy<p1;sy++) vrendz(0,sy,lastx[sy]+1,0,giforzsgn);
-			emms();
 		}
 	}
 }
