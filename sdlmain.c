@@ -251,8 +251,8 @@ static unsigned char keytranslation[] = {
 static void sdlmsgloop(void)
 {
 	SDL_Event ev;
-	unsigned char sc;
-	long shkeystatus;
+	unsigned char sc = 0;
+	long shkeystatus = 0;
 
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {

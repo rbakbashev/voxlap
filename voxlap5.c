@@ -221,6 +221,20 @@ static _inline long lbound0 (long a, long b) //b MUST be >= 0
 	return((~(a>>31))&b);
 }
 
+static _inline long signbit(float f)
+{
+	u32 l;
+	memcpy(&l, &f, 4);
+	return (l >> 31);
+}
+
+static _inline long signbiti(float f)
+{
+	i32 l;
+	memcpy(&l, &f, 4);
+	return (l >> 31);
+}
+
 static void gline (long leng, float x0, float y0, float x1, float y1)
 {
 	i64 q;
@@ -228,7 +242,7 @@ static void gline (long leng, float x0, float y0, float x1, float y1)
 	long j;
 	cftype *c;
 
-	long gx, ogx, gy, ixy, col, dax, day;
+	long gx, ogx = 0, gy, ixy, col, dax, day;
 	cftype *c2, *ce;
 	char *v;
 
@@ -243,17 +257,17 @@ static void gline (long leng, float x0, float y0, float x1, float y1)
 	f1 = f / vx1;
 	f2 = f / vy1;
 	if (fabs(vx1) > fabs(vy1)) vd0 = vd0*f1; else vd0 = vd1*f2;
-	if (*(long *)&vd0 < 0) vd0 = 0; //vd0 MUST NOT be negative: bad for asm
+	if (vd0 < 0) vd0 = 0; //vd0 MUST NOT be negative: bad for asm
 	vd1 = f;
 	ftol(fabs(f1)*PREC,&gdz[0]);
 	ftol(fabs(f2)*PREC,&gdz[1]);
 
-	gixy[0] = (((*(signed long *)&vx1)>>31)<<3)+4; //=sgn(vx1)*4
-	gixy[1] = gixyi[(*(unsigned long *)&vy1)>>31]; //=sgn(vy1)*4*VSID
-	if (gdz[0] <= 0) { ftol(gposxfrac[(*(unsigned long *)&vx1)>>31]*fabs(f1)*PREC,&gpz[0]); if (gpz[0] <= 0) gpz[0] = 0x7fffffff; gdz[0] = 0x7fffffff-gpz[0]; } //Hack for divide overflow
-	else ftol(gposxfrac[(*(unsigned long *)&vx1)>>31]*(float)gdz[0],&gpz[0]);
-	if (gdz[1] <= 0) { ftol(gposyfrac[(*(unsigned long *)&vy1)>>31]*fabs(f2)*PREC,&gpz[1]); if (gpz[1] <= 0) gpz[1] = 0x7fffffff; gdz[1] = 0x7fffffff-gpz[1]; } //Hack for divide overflow
-	else ftol(gposyfrac[(*(unsigned long *)&vy1)>>31]*(float)gdz[1],&gpz[1]);
+	gixy[0] = (signbiti(vx1)<<3)+4; //=sgn(vx1)*4
+	gixy[1] = gixyi[signbit(vy1)]; //=sgn(vy1)*4*VSID
+	if (gdz[0] <= 0) { ftol(gposxfrac[signbit(vx1)]*fabs(f1)*PREC,&gpz[0]); if (gpz[0] <= 0) gpz[0] = 0x7fffffff; gdz[0] = 0x7fffffff-gpz[0]; } //Hack for divide overflow
+	else ftol(gposxfrac[signbit(vx1)]*(float)gdz[0],&gpz[0]);
+	if (gdz[1] <= 0) { ftol(gposyfrac[signbit(vy1)]*fabs(f2)*PREC,&gpz[1]); if (gpz[1] <= 0) gpz[1] = 0x7fffffff; gdz[1] = 0x7fffffff-gpz[1]; } //Hack for divide overflow
+	else ftol(gposyfrac[signbit(vy1)]*(float)gdz[1],&gpz[1]);
 
 	c = &cf[128];
 	c->i0 = gscanptr; c->i1 = &gscanptr[leng];

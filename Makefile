@@ -7,6 +7,7 @@ voxlap: voxlap5.c sdlmain.c
 		-lm \
 		-g \
 		-Wall \
+		-O3 \
 		-Wno-misleading-indentation -Wno-char-subscripts \
 		-funsigned-char
 	./$@
