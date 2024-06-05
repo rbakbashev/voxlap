@@ -13,8 +13,6 @@
 #include <windows.h>
 #else
 #include <stdarg.h>
-#include <conio.h>
-#include <dos.h>
 #define MAX_PATH 260
 #endif
 
@@ -203,7 +201,7 @@ static _inline void dcossin (double a, double *c, double *s)
 
 static _inline void ftol (float f, long *a)
 {
-	*a = (long)floorf(f + 0.5f);
+	*a = (long)(f + 0.5f);
 }
 
 static _inline i32 mulshr16 (i32 a, i32 d)
@@ -248,6 +246,14 @@ static _inline void clearbuf (void *d, long c, long a)
 {
 	memset(d, a, c << 2);
 }
+
+#if defined(_MSC_VER)
+  #define emms() { _asm { emms } }
+#elif defined(__GNUC__)
+  #define emms() { __asm__ __volatile__ ( "emms" ); }
+#else
+  #error "Unsupported compiler"
+#endif
 
 	//if (a < 0) return(0); else if (a > b) return(b); else return(a);
 static _inline long lbound0 (long a, long b) //b MUST be >= 0
@@ -539,8 +545,16 @@ void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
 
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 
-static __declspec(align(16)) point4d opti4[5];
-static __declspec(align(16)) void* opti4asm = opti4;
+#if defined(_MSC_VER)
+  #define ALIGN(n) __declspec(align(n))
+#elif defined(__GNUC__)
+  #define ALIGN(n) __attribute__((aligned(n)))
+#else
+  #error "Unsupported compiler"
+#endif
+
+ALIGN(16) static point4d opti4[5];
+ALIGN(16) static void* opti4asm = opti4;
 
 void (*hrend)(long,long,long,long,long,long);
 void (*vrend)(long,long,long,long,long);
@@ -719,7 +733,7 @@ void opticast ()
 				while ((p1 < xres) && (u1 < j)) { u1 += ui; p1++; }
 				if (p0 < p1) hrend(p0,sy,p1,u,ui,i);
 			}
-			_asm emms
+			emms();
 		}
 	}
 
@@ -755,7 +769,7 @@ void opticast ()
 			if (giforzsgn < 0)
 				  { for(sy=p0;sy<p1;sy++) vrend(lastx[sy],sy,xres,lastx[sy],1); }
 			else { for(sy=p0;sy<p1;sy++) vrend(lastx[sy],sy,xres,-lastx[sy],-1); }
-			_asm emms
+			emms();
 		}
 	}
 
@@ -790,7 +804,7 @@ void opticast ()
 				while ((p1 < xres) && (u1 < j)) { u1 += ui; p1++; }
 				if (p0 < p1) hrend(p0,sy,p1,u,ui,i);
 			}
-			_asm emms
+			emms();
 		}
 	}
 
@@ -824,7 +838,7 @@ void opticast ()
 				while ((p1 < yres) && (u < j)) { u += ui; lastx[p1++] = sx; }
 			}
 			for(sy=p0;sy<p1;sy++) vrend(0,sy,lastx[sy]+1,0,giforzsgn);
-			_asm emms
+			emms();
 		}
 	}
 }
@@ -1084,7 +1098,7 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 		gmipnum--;
 	}
 
-	_asm emms
+	emms();
 }
 
 //------------------------- SXL parsing code begins --------------------------
@@ -1251,7 +1265,6 @@ long initvoxlap ()
 // ----- GAME.C code begins
 
 	//Player position variables:
-#define CLIPRAD 5
 dpoint3d ipos, istr, ihei, ifor, ivel;
 
 	//Mouse button state global variables:

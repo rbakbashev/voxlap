@@ -82,10 +82,7 @@ extern char ext_mbstatus[8];    //bit0=1:down,bit1=1:was down, bits6&7=mwheel
 extern long ext_mwheel;
 extern long mousmoth;           //1:mouse smoothing (default), 0 otherwise
 extern float mousper;           //Estimated mouse interrupt rate
-extern void readmouse (float *, float *, long *);
-#if defined(__cplusplus)
 extern void readmouse (float *, float *, float *, long *);
-#endif
 extern long ismouseout (long, long);
 extern void setmouseout (void (*)(long, long), long, long);
 
