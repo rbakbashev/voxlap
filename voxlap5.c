@@ -539,16 +539,12 @@ void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
 
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 
-#ifdef _MSC_VER
-
 static __declspec(align(16)) point4d opti4[5];
 static __declspec(align(16)) void* opti4asm = opti4;
 
 void (*hrend)(long,long,long,long,long,long);
 void (*vrend)(long,long,long,long,long);
 
-#if 0
-	//Example C code
 void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 {
 	long p0, i; float dirx, diry;
@@ -565,7 +561,6 @@ void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 	} while (p0 != p1);
 }
 
-	//Example C code
 void vrendz (long sx, long sy, long p1, long iplc, long iinc)
 {
 	float dirx, diry; long i, p0;
@@ -579,404 +574,6 @@ void vrendz (long sx, long sy, long p1, long iplc, long iinc)
 		*(long *)p0 = angstart[uurend[sx]>>16][iplc].col;
 		*(float *)(p0+i) = (float)angstart[uurend[sx]>>16][iplc].dist/sqrt(dirx*dirx+diry*diry);
 		dirx += optistrx; diry += optistry; uurend[sx] += uurend[sx+MAXXDIM]; p0 += 4; iplc += iinc; sx++;
-	}
-}
-
-#endif
-
-void hrendzsse (long sx, long sy, long p1, long plc, long incr, long j)
-{
-	_asm
-	{
-		push esi
-		push edi
-beghasm_p3:
-		mov eax, sx
-		mov ecx, sy
-		mov esi, p1
-		mov edx, ylookup[ecx*4]
-		add edx, frameplace
-		lea edi, [edx+eax*4]
-		lea esi, [edx+esi*4]
-
-		and eax, 0xfffffffc
-		cvtsi2ss xmm0, eax
-		cvtsi2ss xmm4, ecx
-		movss xmm1, xmm0
-		movss xmm5, xmm4
-		mulss xmm0, optistrx
-		mulss xmm1, optistry
-		mulss xmm4, optiheix
-		mulss xmm5, optiheiy
-		addss xmm0, optiaddx
-		addss xmm1, optiaddy
-		addss xmm0, xmm4
-		addss xmm1, xmm5
-
-		mov ecx, zbufoff
-		mov edx, j
-		movd mm6, plc
-		movd mm7, incr
-
-		shufps xmm0, xmm0, 0
-		shufps xmm1, xmm1, 0
-		movaps xmm2, opti4asm[2*16]
-		movaps xmm3, opti4asm[3*16]
-		addps xmm0, opti4asm[0*16]
-		addps xmm1, opti4asm[1*16]
-			;xmm0 =  xmm0      ^2 +  xmm1      ^2        (p)
-			;xmm2 = (xmm0+xmm2)^2 + (xmm1+xmm3)^2 - xmm0 (v)
-			;xmm1 = ...                                  (a)
-		addps xmm2, xmm0  ;This block converts inner loop...
-		addps xmm3, xmm1  ;from: 1 / sqrt(x*x + y*y), x += xi, y += yi;
-		mulps xmm0, xmm0  ;  to: 1 / sqrt(p), p += v, v += a;
-		mulps xmm1, xmm1
-		mulps xmm2, xmm2
-		mulps xmm3, xmm3
-		addps xmm0, xmm1
-		movaps xmm1, opti4asm[4*16]
-		addps xmm2, xmm3
-		subps xmm2, xmm0
-
-			;Do first 0-3 pixels to align unrolled loop of 4
-		test edi, 15
-		jz short skip1ha
-
-		test edi, 8
-		jz short skipshufa
-		shufps xmm0, xmm0, 0x4e ;rotate right by 2
-skipshufa:
-		test edi, 4
-		jz short skipshufb
-		shufps xmm0, xmm0, 0x39 ;rotate right by 1
-skipshufb:
-
-beg1ha:
-		pextrw eax, mm6, 1
-		paddd mm6, mm7
-		mov eax, angstart[eax*4]
-		movd mm0, [eax+edx*8]
-		movd [edi], mm0
-		cvtsi2ss xmm7, [eax+edx*8+4]
-		rsqrtss xmm3, xmm0
-		mulss xmm7, xmm3
-		shufps xmm0, xmm0, 0x39 ;rotate right by 1
-		movss [edi+ecx], xmm7
-		add edi, 4
-		cmp edi, esi
-		jz short endh
-		test edi, 15
-		jnz short beg1ha
-
-		addps xmm0, xmm2
-		addps xmm2, xmm1
-skip1ha:
-		lea eax, [edi+16]      ;these 3 lines re-ordered
-		cmp eax, esi
-		ja short skip4h
-
-		movq mm0, mm6          ;mm0: 0,plc
-		paddd mm0, mm7         ;mm0: 0,plc+inc
-		punpckldq mm7, mm7     ;mm7: inc,inc
-		punpckldq mm6, mm0     ;mm6: plc+inc,plc
-		paddd mm7, mm7         ;mm7: inc+inc,inc+inc
-
-		sub esi, 16
-
-		 ;eax: temp   ³ mm0:  z0 argb0   argb1 argb0 ³ xmm0: plc3 plc2 plc1 plc0
-		 ;ebx:  -     ³ mm1:  z1 argb1               ³ xmm1: acc3 acc2 acc1 acc0
-		 ;ecx:zbufoff ³ mm2:  z2 argb2   argb3 argb2 ³ xmm2: inc3 inc2 inc1 inc0
-		 ;edx:  j     ³ mm3:  z3 argb3               ³ xmm3:  r3   r2   r1   r0
-		 ;esi:  -     ³ mm4:              z1    z0   ³ xmm4:            z3   z2
-		 ;edi:scroff  ³ mm5:              z3    z2   ³ xmm5:
-		 ;ebp:  -     ³ mm6: plc1 plc0               ³ xmm6:
-beg4h: ;esp:  -     ³ mm7: inc1 inc0               ³ xmm7:  z3   z2   z1   z0
-		pextrw eax, mm6, 1
-		mov eax, angstart[eax*4]
-		movq mm0, [eax+edx*8]
-		pextrw eax, mm6, 3
-		mov eax, angstart[eax*4]
-		movq mm1, [eax+edx*8]
-		paddd mm6, mm7
-		pextrw eax, mm6, 1
-		mov eax, angstart[eax*4]
-		movq mm2, [eax+edx*8]
-		pextrw eax, mm6, 3
-		mov eax, angstart[eax*4]
-		movq mm3, [eax+edx*8]
-		paddd mm6, mm7
-
-		movq mm4, mm0
-		movq mm5, mm2
-		punpckldq mm0, mm1
-		punpckldq mm2, mm3
-		movntq [edi], mm0
-		movntq [edi+8], mm2
-
-		punpckhdq mm4, mm1
-		punpckhdq mm5, mm3
-		cvtpi2ps xmm7, mm4
-		cvtpi2ps xmm4, mm5
-		rsqrtps xmm3, xmm0
-		movlhps xmm7, xmm4
-		mulps xmm7, xmm3
-		movntps [edi+ecx], xmm7
-		addps xmm0, xmm2
-		addps xmm2, xmm1
-
-		add edi, 16
-		cmp edi, esi
-		jbe short beg4h
-		add esi, 16
-		cmp edi, esi
-		jae endh
-
-		psrad mm7, 1    ;Restore mm7 from incr*2 to just incr for single loop
-skip4h:
-beg1h:
-		pextrw eax, mm6, 1
-		paddd mm6, mm7
-		mov eax, angstart[eax*4]
-		movd mm0, [eax+edx*8]
-		movd [edi], mm0
-		cvtsi2ss xmm7, [eax+edx*8+4]
-		rsqrtss xmm3, xmm0
-		mulss xmm7, xmm3
-		shufps xmm0, xmm0, 0x39 ;rotate right by 1
-		movss [edi+ecx], xmm7
-		add edi, 4
-		cmp edi, esi
-		jb short beg1h
-endh: pop edi
-		pop esi
-	}
-}
-
-void vrendzsse (long sx, long sy, long p1, long iplc, long iinc)
-{
-	_asm
-	{
-		push ebx
-		push esi
-		push edi
-begvasm_p3:
-		mov esi, sx
-		mov eax, sy
-		mov edx, p1
-		mov ecx, ylookup[eax*4]
-		add ecx, frameplace
-		lea edx, [ecx+edx*4]
-		lea edi, [ecx+esi*4]
-
-		mov ecx, esi
-		and ecx, 0xfffffffc
-		cvtsi2ss xmm0, ecx
-		cvtsi2ss xmm4, eax
-		movss xmm1, xmm0
-		movss xmm5, xmm4
-		mulss xmm0, optistrx
-		mulss xmm1, optistry
-		mulss xmm4, optiheix
-		mulss xmm5, optiheiy
-		addss xmm0, optiaddx
-		addss xmm1, optiaddy
-		addss xmm0, xmm4
-		addss xmm1, xmm5
-
-		shufps xmm0, xmm0, 0
-		shufps xmm1, xmm1, 0
-		movaps xmm2, opti4asm[2*16]
-		movaps xmm3, opti4asm[3*16]
-		addps xmm0, opti4asm[0*16]
-		addps xmm1, opti4asm[1*16]
-			;xmm0 =  xmm0      ^2 +  xmm1      ^2        (p)
-			;xmm2 = (xmm0+xmm2)^2 + (xmm1+xmm3)^2 - xmm0 (v)
-			;xmm1 = ...                                  (a)
-		addps xmm2, xmm0  ;This block converts inner loop...
-		addps xmm3, xmm1  ;from: 1 / sqrt(x*x + y*y), x += xi, y += yi;
-		mulps xmm0, xmm0  ;  to: 1 / sqrt(p), p += v, v += a;
-		mulps xmm1, xmm1
-		mulps xmm2, xmm2
-		mulps xmm3, xmm3
-		addps xmm0, xmm1
-		movaps xmm1, opti4asm[4*16]
-		addps xmm2, xmm3
-		subps xmm2, xmm0
-
-		mov p1, edx
-		mov ecx, zbufoff
-		shl esi, 2
-		add esi, uurend
-		mov ebx, iplc
-
-		cmp edi, edx
-		jae short endv
-
-			;Do first 0-3 pixels to align unrolled loop of 4
-		test edi, 15
-		jz short skip1va
-
-		test edi, 8
-		jz short skipshufc
-		shufps xmm0, xmm0, 0x4e ;rotate right by 2
-skipshufc:
-		test edi, 4
-		jz short skipshufd
-		shufps xmm0, xmm0, 0x39 ;rotate right by 1
-skipshufd:
-
-beg1va:
-		mov edx, [esi]
-		mov eax, [esi+MAXXDIM*4]
-		add eax, edx
-		sar edx, 16
-		mov edx, angstart[edx*4]
-		mov [esi], eax
-		mov eax, [edx+ebx*8]
-		mov [edi], eax
-		cvtsi2ss xmm7, [edx+ebx*8+4]
-		rsqrtss xmm3, xmm0
-		mulss xmm7, xmm3
-		shufps xmm0, xmm0, 0x39 ;rotate right by 1
-		movss [edi+ecx], xmm7
-		add ebx, iinc
-		add esi, 4
-		add edi, 4
-		cmp edi, p1
-		jz short endv
-		test edi, 15
-		jnz short beg1va
-
-		addps xmm0, xmm2
-		addps xmm2, xmm1
-skip1va:
-		lea edx, [edi+16]
-		cmp edx, p1
-		ja short prebeg1v
-
-		cmp iinc, 0
-		jl short beg4vn
-
-beg4vp:
-		movq mm6, [esi]
-		movq mm7, [esi+8]
-		pextrw eax, mm6, 1
-		pextrw edx, mm6, 3
-		paddd mm6, [esi+MAXXDIM*4]
-		mov eax, angstart[eax*4]
-		mov edx, angstart[edx*4]
-		movq mm0, [eax+ebx*8]
-		movq mm1, [edx+ebx*8+8]
-		pextrw eax, mm7, 1
-		pextrw edx, mm7, 3
-		paddd mm7, [esi+8+MAXXDIM*4]
-		mov eax, angstart[eax*4]
-		mov edx, angstart[edx*4]
-		movq mm2, [eax+ebx*8+16]
-		movq mm3, [edx+ebx*8+24]
-		add ebx, 4
-
-		movq mm4, mm0
-		movq mm5, mm2
-		punpckldq mm0, mm1
-		punpckldq mm2, mm3
-		movntq [edi], mm0
-		movntq [edi+8], mm2
-
-		punpckhdq mm4, mm1
-		punpckhdq mm5, mm3
-		cvtpi2ps xmm7, mm4
-		cvtpi2ps xmm4, mm5
-		rsqrtps xmm3, xmm0
-		movlhps xmm7, xmm4
-		mulps xmm7, xmm3
-		movntps [edi+ecx], xmm7
-		addps xmm0, xmm2
-		addps xmm2, xmm1
-
-		movq [esi], mm6
-		movq [esi+8], mm7
-
-		add esi, 16
-		add edi, 16
-		lea edx, [edi+16]
-		cmp edx, p1
-		jbe short beg4vp
-		cmp edi, p1
-		jae short endv
-		jmp short prebeg1v
-
-beg4vn:
-		movq mm6, [esi]
-		movq mm7, [esi+8]
-		pextrw eax, mm6, 1
-		pextrw edx, mm6, 3
-		paddd mm6, [esi+MAXXDIM*4]
-		mov eax, angstart[eax*4]
-		mov edx, angstart[edx*4]
-		movq mm0, [eax+ebx*8]
-		movq mm1, [edx+ebx*8-8]
-		pextrw eax, mm7, 1
-		pextrw edx, mm7, 3
-		paddd mm7, [esi+8+MAXXDIM*4]
-		mov eax, angstart[eax*4]
-		mov edx, angstart[edx*4]
-		movq mm2, [eax+ebx*8-16]
-		movq mm3, [edx+ebx*8-24]
-		sub ebx, 4
-
-		movq mm4, mm0
-		movq mm5, mm2
-		punpckldq mm0, mm1
-		punpckldq mm2, mm3
-		movntq [edi], mm0
-		movntq [edi+8], mm2
-
-		punpckhdq mm4, mm1
-		punpckhdq mm5, mm3
-		cvtpi2ps xmm7, mm4
-		cvtpi2ps xmm4, mm5
-		rsqrtps xmm3, xmm0
-		movlhps xmm7, xmm4
-		mulps xmm7, xmm3
-		movntps [edi+ecx], xmm7
-		addps xmm0, xmm2
-		addps xmm2, xmm1
-
-		movq [esi], mm6
-		movq [esi+8], mm7
-
-		add esi, 16
-		add edi, 16
-		lea edx, [edi+16]
-		cmp edx, p1
-		jbe short beg4vn
-		cmp edi, p1
-		jae short endv
-
-prebeg1v:
-beg1v:
-		mov edx, [esi]
-		mov eax, [esi+MAXXDIM*4]
-		add eax, edx
-		sar edx, 16
-		mov edx, angstart[edx*4]
-		mov [esi], eax
-		mov eax, [edx+ebx*8]
-		mov [edi], eax
-		cvtsi2ss xmm7, [edx+ebx*8+4]
-		rsqrtss xmm3, xmm0
-		mulss xmm7, xmm3
-		shufps xmm0, xmm0, 0x39 ;rotate right by 1
-		movss [edi+ecx], xmm7
-		add ebx, iinc
-		add esi, 4
-		add edi, 4
-		cmp edi, p1
-		jne short beg1v
-endv: pop edi
-		pop esi
-		pop ebx
 	}
 }
 
@@ -1030,8 +627,8 @@ void opticast ()
 	for(i=0;i<256+4;i++) gylookup[i] = (i*PREC-gposz);
 	gmaxscandist = min(max(vx5.maxscandist,1),2047)*PREC;
 
-	hrend = hrendzsse;
-	vrend = vrendzsse;
+	hrend = hrendz;
+	vrend = vrendz;
 
 	gstartv = (char *)*(long *)gpixy;
 	if (glipos.z >= gstartv[1])
@@ -1081,13 +678,12 @@ void opticast ()
 	f = (float)PREC / gihz;
 	optistrx = gistr.x*f; optiheix = gihei.x*f; optiaddx = gcorn[0].x*f;
 	optistry = gistr.y*f; optiheiy = gihei.y*f; optiaddy = gcorn[0].y*f;
-#ifdef _MSC_VER
+
 	opti4[0].y = optistrx; opti4[0].z = optistrx*2; opti4[0].z2 = optistrx*3;
 	opti4[1].y = optistry; opti4[1].z = optistry*2; opti4[1].z2 = optistry*3;
 	opti4[2].x = opti4[2].y = opti4[2].z = opti4[2].z2 = optistrx*4.0f;
 	opti4[3].x = opti4[3].y = opti4[3].z = opti4[3].z2 = optistry*4.0f;
 	opti4[4].x = opti4[4].y = opti4[4].z = opti4[4].z2 = (optistrx*optistrx + optistry*optistry)*32.0f; //NEW ALGO!
-#endif
 
 	ftol(cx*65536,&cx16);
 	ftol(cy*65536,&cy16);
@@ -1535,8 +1131,6 @@ long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 	sxlparspos = j;
 	return(1);
 }
-
-#endif
 
 	//Updates mip-mapping
 typedef struct { long x0, y0, z0, x1, y1, z1, csgdel; } bboxtyp;
