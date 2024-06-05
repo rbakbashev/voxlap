@@ -37,13 +37,6 @@ static void opticast();
 // Physics helper functions:
 static void dorthorotate(double, double, double, dpoint3d*, dpoint3d*, dpoint3d*);
 
-// ZIP functions:
-static int kzopen(const char*);
-static int kzread(void*, int);
-static int kzfilelength();
-static int kztell();
-static void kzclose();
-
 #define PREC (256 * 4096)
 #define CMPPREC (256 * 4096)
 
@@ -909,8 +902,19 @@ static void opticast()
 	}
 }
 
+static inline int filelength(int h)
+{
+	struct stat st;
+
+	if (fstat(h, &st) < 0)
+		return (-1);
+
+	return (st.st_size);
+}
+
 static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo)
 {
+	FILE* fil;
 	long i, fsiz;
 	char* v;
 
@@ -920,26 +924,38 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3
 			evilquit("vbuf malloc failed");
 	}
 
-	if (!kzopen(lodfilnam))
-		return (0);
-	fsiz = kzfilelength();
+	fil = fopen(lodfilnam, "rb");
+	if (!fil) {
+		printf("file '%s' not found\n", lodfilnam);
+		exit(1);
+	}
 
-	kzread(&i, 4);
+	fsiz = filelength(fileno(fil));
+	int pos = 0;
+
+	pos += 4;
+	fread(&i, 4, 1, fil);
 	if (i != 0x09072000)
 		return (0);
-	kzread(&i, 4);
+
+	pos += 4;
+	fread(&i, 4, 1, fil);
 	if (i != VSID)
 		return (0);
-	kzread(&i, 4);
+
+	pos += 4;
+	fread(&i, 4, 1, fil);
 	if (i != VSID)
 		return (0);
-	kzread(ipo, 24);
-	kzread(ist, 24);
-	kzread(ihe, 24);
-	kzread(ifo, 24);
+
+	fread(ipo, 24, 1, fil);
+	fread(ist, 24, 1, fil);
+	fread(ihe, 24, 1, fil);
+	fread(ifo, 24, 1, fil);
+	pos += 24 * 4;
 
 	v = (char*)(&vbuf[1]); // 1st dword for voxalloc compare logic optimization
-	kzread((void*)v, fsiz - kztell());
+	fread((void*)v, fsiz - pos, 1, fil);
 
 	for (i = 0; i < VSID * VSID; i++) {
 		sptr[i] = v;
@@ -947,7 +963,8 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3
 			v += (((long)v[0]) << 2);
 		v += ((((long)v[2]) - ((long)v[1]) + 2) << 2);
 	}
-	kzclose();
+
+	fclose(fil);
 
 	memset(&sptr[VSID * VSID], 0, sizeof(sptr) - VSID * VSID * 4);
 
@@ -1176,83 +1193,4 @@ void doframe()
 	ipos.x += ivel.x * f;
 	ipos.y += ivel.y * f;
 	ipos.z += ivel.z * f;
-}
-
-/// ------- KPLIB code begins
-
-typedef struct
-{
-	FILE* fil; // 0:no file open, !=0:open file (either stand-alone or zip)
-	int leng; // Uncompressed file size (bytes)
-	int pos; // Current uncompressed relative file position (0<=pos<=leng)
-	int i; // For stand-alone/ZIP comptyp#0, this is like "uncomptell"
-	       // For ZIP comptyp#8&btype==0 "<64K store", this saves i state
-} kzfilestate;
-static kzfilestate kzfs;
-
-static inline int filelength(int h)
-{
-	struct stat st;
-	if (fstat(h, &st) < 0)
-		return (-1);
-	return (st.st_size);
-}
-
-static int kzopen(const char* filnam)
-{
-	kzfs.fil = fopen(filnam, "rb");
-
-	if (!kzfs.fil) {
-		printf("file '%s' not found\n", filnam);
-		exit(1);
-	}
-
-	kzfs.leng = filelength(fileno(kzfs.fil));
-	kzfs.pos = 0;
-	kzfs.i = 0;
-
-	return kzfs.fil != NULL;
-}
-
-// returns number of bytes copied
-static int kzread(void* buffer, int leng)
-{
-	int i;
-
-	if ((!kzfs.fil) || (leng <= 0))
-		return (0);
-
-	if (kzfs.pos != kzfs.i) // Seek only when position changes
-		fseek(kzfs.fil, kzfs.pos, SEEK_SET);
-	i = min(kzfs.leng - kzfs.pos, leng);
-	fread(buffer, i, 1, kzfs.fil);
-	kzfs.i += i; // kzfs.i is a local copy of ftell(kzfs.fil);
-
-	i = kzfs.pos;
-	kzfs.pos += leng;
-	if (kzfs.pos > kzfs.leng)
-		kzfs.pos = kzfs.leng;
-	return (kzfs.pos - i);
-}
-
-static int kzfilelength()
-{
-	if (!kzfs.fil)
-		return (0);
-	return (kzfs.leng);
-}
-
-static int kztell()
-{
-	if (!kzfs.fil)
-		return (-1);
-	return (kzfs.pos);
-}
-
-static void kzclose()
-{
-	if (kzfs.fil) {
-		fclose(kzfs.fil);
-		kzfs.fil = 0;
-	}
 }
