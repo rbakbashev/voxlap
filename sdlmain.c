@@ -173,7 +173,8 @@ void readmouse (float *fmousx, float *fmousy, float *fmousz, long *bstatus)
 	*fmousy = (float)mousey;
 	if (fmousz)
 		*fmousz = 0.f;
-	*bstatus = gbstatus;
+	if (bstatus)
+		*bstatus = gbstatus;
 
 	mousex = mousey = 0;
 }

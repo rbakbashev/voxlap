@@ -517,11 +517,6 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
   #error "Unsupported compiler"
 #endif
 
-ALIGN(16) static point4d opti4[5];
-
-static void (*hrend)(long,long,long,long,long,long);
-static void (*vrend)(long,long,long,long,long);
-
 static void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 {
 	long p0, i; float dirx, diry;
@@ -602,9 +597,6 @@ static void opticast ()
 	for(i=0;i<256+4;i++) gylookup[i] = (i*PREC-gposz);
 	gmaxscandist = min(max(vx5.maxscandist,1),2047)*PREC;
 
-	hrend = hrendz;
-	vrend = vrendz;
-
 	gstartv = (char *)*(long *)gpixy;
 	if (glipos.z >= gstartv[1])
 	{
@@ -654,12 +646,6 @@ static void opticast ()
 	optistrx = gistr.x*f; optiheix = gihei.x*f; optiaddx = gcorn[0].x*f;
 	optistry = gistr.y*f; optiheiy = gihei.y*f; optiaddy = gcorn[0].y*f;
 
-	opti4[0].y = optistrx; opti4[0].z = optistrx*2; opti4[0].z2 = optistrx*3;
-	opti4[1].y = optistry; opti4[1].z = optistry*2; opti4[1].z2 = optistry*3;
-	opti4[2].x = opti4[2].y = opti4[2].z = opti4[2].z2 = optistrx*4.0f;
-	opti4[3].x = opti4[3].y = opti4[3].z = opti4[3].z2 = optistry*4.0f;
-	opti4[4].x = opti4[4].y = opti4[4].z = opti4[4].z2 = (optistrx*optistrx + optistry*optistry)*32.0f; //NEW ALGO!
-
 	ftol(cx*65536,&cx16);
 	ftol(cy*65536,&cy16);
 
@@ -692,7 +678,7 @@ static void opticast ()
 				while ((p0 > 0) && (u >= ui)) { u -= ui; p0--; }
 				u1 = (p1-p0)*ui + u;
 				while ((p1 < xres) && (u1 < j)) { u1 += ui; p1++; }
-				if (p0 < p1) hrend(p0,sy,p1,u,ui,i);
+				if (p0 < p1) hrendz(p0,sy,p1,u,ui,i);
 			}
 			emms();
 		}
@@ -728,8 +714,8 @@ static void opticast ()
 				while ((p1 < yres) && (u < j)) { u += ui; lastx[p1++] = sx; }
 			}
 			if (giforzsgn < 0)
-				  { for(sy=p0;sy<p1;sy++) vrend(lastx[sy],sy,xres,lastx[sy],1); }
-			else { for(sy=p0;sy<p1;sy++) vrend(lastx[sy],sy,xres,-lastx[sy],-1); }
+				  { for(sy=p0;sy<p1;sy++) vrendz(lastx[sy],sy,xres,lastx[sy],1); }
+			else { for(sy=p0;sy<p1;sy++) vrendz(lastx[sy],sy,xres,-lastx[sy],-1); }
 			emms();
 		}
 	}
@@ -763,7 +749,7 @@ static void opticast ()
 				while ((p0 > 0) && (u >= ui)) { u -= ui; p0--; }
 				u1 = (p1-p0)*ui + u;
 				while ((p1 < xres) && (u1 < j)) { u1 += ui; p1++; }
-				if (p0 < p1) hrend(p0,sy,p1,u,ui,i);
+				if (p0 < p1) hrendz(p0,sy,p1,u,ui,i);
 			}
 			emms();
 		}
@@ -798,7 +784,7 @@ static void opticast ()
 				uurend[sx] = u; uurend[sx+MAXXDIM] = ui; u += (p1-p0)*ui;
 				while ((p1 < yres) && (u < j)) { u += ui; lastx[p1++] = sx; }
 			}
-			for(sy=p0;sy<p1;sy++) vrend(0,sy,lastx[sy]+1,0,giforzsgn);
+			for(sy=p0;sy<p1;sy++) vrendz(0,sy,lastx[sy]+1,0,giforzsgn);
 			emms();
 		}
 	}
@@ -1174,15 +1160,11 @@ static long initvoxlap ()
 // ----- GAME.C code begins
 
 	//Player position variables:
-static dpoint3d ipos, istr, ihei, ifor, ivel;
-
-	//Mouse button state global variables:
-static long obstatus = 0, bstatus = 0;
+static dpoint3d ipos, istr, ihei, ifor;
 
 	//Timer global variables:
-static double odtotclk, dtotclk;
-static float fsynctics;
-static long totclk;
+static double curtime;
+static float dt;
 
 static long initmap ()
 {
@@ -1199,8 +1181,6 @@ static long initmap ()
 
 	vx5.maxscandist = (long)(VSID*1.42);
 
-	ivel.x = ivel.y = ivel.z = 0;
-
 	return 0;
 }
 
@@ -1214,10 +1194,9 @@ long initapp (long argc, char **argv)
 	if (initmap() < 0) return(-1);
 
 		//Init klock
-	readklock(&dtotclk);
-	totclk = (long)(dtotclk*1000.0);
+	readklock(&curtime);
 
-	fsynctics = 1.f;
+	dt = 1.f;
 
 	return 0;
 }
@@ -1245,17 +1224,19 @@ skipalldraw:;
 
 		//Read keyboard, mouse, and timer
 	readkeyboard();
-	obstatus = bstatus; readmouse(&fmousx,&fmousy,0,&bstatus);
-	odtotclk = dtotclk; readklock(&dtotclk);
-	totclk = (long)(dtotclk*1000.0); fsynctics = (float)(dtotclk-odtotclk);
+	readmouse(&fmousx,&fmousy,0,0);
+
+	double oldtime = curtime;
+	readklock(&curtime);
+	dt = (float)(curtime - oldtime);
 
 		//Rotate player's view
 	dp.x = istr.z*.1; dp.y = fmousy*.008; dp.z = fmousx*.008;
 	dorthorotate(dp.x,dp.y,dp.z,&istr,&ihei,&ifor);
 
-	ivel.x = ivel.y = ivel.z = 0;
+	dpoint3d ivel = { 0, 0, 0 };
 
-	f = fsynctics*60.0;
+	f = dt*60.0;
 	if (keystatus[0x1e]) { ivel.x -= istr.x*f; ivel.y -= istr.y*f; ivel.z -= istr.z*f; } // A
 	if (keystatus[0x20]) { ivel.x += istr.x*f; ivel.y += istr.y*f; ivel.z += istr.z*f; } // D
 	if (keystatus[0x11]) { ivel.x += ifor.x*f; ivel.y += ifor.y*f; ivel.z += ifor.z*f; } // W
@@ -1263,7 +1244,7 @@ skipalldraw:;
 	if (keystatus[0x12]) { ivel.x -= ihei.x*f; ivel.y -= ihei.y*f; ivel.z -= ihei.z*f; } // E
 	if (keystatus[0x10]) { ivel.x += ihei.x*f; ivel.y += ihei.y*f; ivel.z += ihei.z*f; } // Q
 
-	f = fsynctics*60.0;
+	f = dt*60.0;
 	ipos.x += ivel.x*f;
 	ipos.y += ivel.y*f;
 	ipos.z += ivel.z*f;
