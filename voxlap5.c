@@ -86,7 +86,6 @@ static long initvoxlap ();
 static void uninitvoxlap ();
 
 	//File related functions:
-static long loadsxl (const char *, char **, char **, char **);
 static long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 
 	//Screen related functions:
@@ -137,8 +136,6 @@ static long *vbuf = 0, *vbit = 0, vbiti;
 	//Memory management variables:
 #define MAXCSIZ 1028
 static char tbuf[MAXCSIZ];
-
-static char nullst = 0; //nullst always NULL string
 
 #pragma pack(push,1)
 	//Rendering variables:
@@ -1064,51 +1061,6 @@ static void genmipvxl (long x0, long y0, long x1, long y1)
 	emms();
 }
 
-//------------------------- SXL parsing code begins --------------------------
-
-static char *sxlbuf = 0;
-static long sxlparspos, sxlparslen;
-
-static long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
-{
-	long j, m, n;
-
-		//NOTE: MUST buffer file because insertsprite uses kz file code :/
-	if (!kzopen(sxlnam)) return(0);
-	sxlparslen = kzfilelength();
-	if (sxlbuf) { free(sxlbuf); sxlbuf = 0; }
-	if (!(sxlbuf = (char *)malloc(sxlparslen))) return(0);
-	kzread(sxlbuf,sxlparslen);
-	kzclose();
-
-	j = n = 0;
-
-		//parse vxlnam
-	(*vxlnam) = &sxlbuf[j];
-	while ((sxlbuf[j]!=13)&&(sxlbuf[j]!=10) && (j < sxlparslen)) j++; sxlbuf[j++] = 0;
-	while (((sxlbuf[j]==13)||(sxlbuf[j]==10)) && (j < sxlparslen)) j++;
-
-		//parse skynam
-	(*skynam) = &sxlbuf[j];
-	while ((sxlbuf[j]!=13)&&(sxlbuf[j]!=10) && (j < sxlparslen)) j++; sxlbuf[j++] = 0;
-	while (((sxlbuf[j]==13)||(sxlbuf[j]==10)) && (j < sxlparslen)) j++;
-
-		//parse globst
-	m = n = j; (*globst) = &sxlbuf[n];
-	while (((sxlbuf[j] == ' ') || (sxlbuf[j] == 9)) && (j < sxlparslen))
-	{
-		j++;
-		while ((sxlbuf[j]!=13) && (sxlbuf[j]!=10) && (j < sxlparslen)) sxlbuf[n++] = sxlbuf[j++];
-		sxlbuf[n++] = 13; j++;
-		while (((sxlbuf[j]==13) || (sxlbuf[j]==10)) && (j < sxlparslen)) j++;
-	}
-	if (n > m) sxlbuf[n-1] = 0; else (*globst) = &nullst;
-
-		//Count number of sprites in .SXL file (helpful for GAME)
-	sxlparspos = j;
-	return(1);
-}
-
 	//Updates mip-mapping
 typedef struct { long x0, y0, z0, x1, y1, z1, csgdel; } bboxtyp;
 #define BBOXSIZ 256
@@ -1182,8 +1134,6 @@ static void voxsetframebuffer (long p, long b, long x, long y)
 
 static void uninitvoxlap ()
 {
-	if (sxlbuf) { free(sxlbuf); sxlbuf = 0; }
-
 	if (vbuf) { free(vbuf); vbuf = 0; }
 	if (vbit) { free(vbit); vbit = 0; }
 
@@ -1236,17 +1186,11 @@ static long totclk;
 
 static long initmap ()
 {
-	char cursxlnam[MAX_PATH+1] = "vxl/default.sxl";
-	char *vxlnam, *skynam, *userst;
+	const char *vxlnam = "vxl/untitled.vxl";
 
-	if (!loadsxl(cursxlnam,&vxlnam,&skynam,&userst)) {
-		printf("failed to load '%s'\n", cursxlnam);
-		exit(1);
-	}
-
-	if (!loadvxl(vxlnam,&ipos,&istr,&ihei,&ifor)) {
+	if (!loadvxl(vxlnam, &ipos, &istr, &ihei, &ifor)) {
 		printf("failed to load '%s'\n", vxlnam);
-		exit(1);
+		return -1;
 	}
 
 	vx5.vxlmipuse = 9;
