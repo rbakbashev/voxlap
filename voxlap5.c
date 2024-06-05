@@ -2,62 +2,19 @@
 
 #include <fcntl.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 
 #include "sysmain.h"
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <stdarg.h>
-#define MAX_PATH 260
-#endif
-
-#ifdef __GNUC__
-  #include <stdint.h>
-  typedef  int16_t i16;
-  typedef uint16_t u16;
-  typedef  int32_t i32;
-  typedef uint32_t u32;
-  typedef  int64_t i64;
-  typedef uint64_t u64;
-#else
-  typedef              short i16;
-  typedef     unsigned short u16;
-  typedef               long i32;
-  typedef      unsigned long u32;
-  typedef          long long i64;
-  typedef unsigned long long u64;
-#endif
-
-#if !defined(_WIN32) && !defined(__DOS__)
-#include <unistd.h>
-#include <dirent.h>
-static __inline int filelength (int h)
-{
-	struct stat st;
-	if (fstat(h,&st) < 0) return(-1);
-	return(st.st_size);
-}
-#define _fileno fileno
-#else
-#include <io.h>
-#endif
-
 #if !defined(max)
-#define max(a,b) (((a) > (b)) ? (a) : (b))
+  #define max(a,b) (((a) > (b)) ? (a) : (b))
 #endif
 #if !defined(min)
-#define min(a,b) (((a) < (b)) ? (a) : (b))
-#endif
-
-#if defined(__GNUC__)
-#define _inline inline
+  #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
 #define MAXXDIM 1024
@@ -66,11 +23,9 @@ static __inline int filelength (int h)
 #define MAXZDIM 256 //Maximum .VXL dimensions in z direction (height)
 
 #pragma pack(push,1)
-
 typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 typedef struct { double x, y, z; } dpoint3d;
-
 #pragma pack(pop)
 
 	//Voxlap5 shared global variables:
@@ -165,35 +120,35 @@ static long zbufoff;
 static long gi0;
 static long gi1;
 
-static _inline void dcossin (double a, double *c, double *s)
+static inline void dcossin (double a, double *c, double *s)
 {
 	*c = cos(a);
 	*s = sin(a);
 }
 
-static _inline void ftol (float f, long *a)
+static inline void ftol (float f, long *a)
 {
 	*a = (long)(f + 0.5f);
 }
 
-static _inline i32 mulshr16 (i32 a, i32 d)
+static inline int32_t mulshr16 (int32_t a, int32_t d)
 {
-	return ((i64)a * (i64)d) >> 16;
+	return ((int64_t)a * (int64_t)d) >> 16;
 }
 
-static _inline i64 mul64 (i32 a, i32 d)
+static inline int64_t mul64 (int32_t a, int32_t d)
 {
-	return (i64)a * (i64)d;
+	return (int64_t)a * (int64_t)d;
 }
 
-static _inline long shldiv16 (long a, long b)
+static inline long shldiv16 (long a, long b)
 {
-	i64 div = ((i64)(a >> 16) << 32) + (i64)(a << 16);
+	int64_t div = ((int64_t)(a >> 16) << 32) + (int64_t)(a << 16);
 
-	return div / (i64)b;
+	return div / (int64_t)b;
 }
 
-static _inline long isshldiv16safe (long a, long b)
+static inline long isshldiv16safe (long a, long b)
 {
 	if (a >= 0)
 		a = -a;
@@ -204,40 +159,40 @@ static _inline long isshldiv16safe (long a, long b)
 	return (b - (a >> 14)) >> 31;
 }
 
-static _inline long dmulrethigh (long b, long c, long a, long d)
+static inline long dmulrethigh (long b, long c, long a, long d)
 {
-	return (u64)(c * (i64)b - d * (i64)a) >> 32;
+	return (uint64_t)(c * (int64_t)b - d * (int64_t)a) >> 32;
 }
 
-static _inline void clearbuf (void *d, long c, long a)
+static inline void clearbuf (void *d, long c, long a)
 {
 	memset(d, a, c << 2);
 }
 
 	//if (a < 0) return(0); else if (a > b) return(b); else return(a);
-static _inline long lbound0 (long a, long b) //b MUST be >= 0
+static inline long lbound0 (long a, long b) //b MUST be >= 0
 {
 	if ((unsigned long)a <= b) return(a);
 	return((~(a>>31))&b);
 }
 
-static _inline long signbit(float f)
+static inline long signbit(float f)
 {
-	u32 l;
+	uint32_t l;
 	memcpy(&l, &f, 4);
 	return (l >> 31);
 }
 
-static _inline long signbiti(float f)
+static inline long signbiti(float f)
 {
-	i32 l;
+	int32_t l;
 	memcpy(&l, &f, 4);
 	return (l >> 31);
 }
 
 static void gline (long leng, float x0, float y0, float x1, float y1)
 {
-	i64 q;
+	int64_t q;
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
 	long j;
 	cftype *c;
@@ -289,14 +244,14 @@ static void gline (long leng, float x0, float y0, float x1, float y1)
 
 		//Clip borders safely (MUST use integers!) - don't wrap around
 	if (gixy[0] < 0) j = glipos.x; else j = VSID-1-glipos.x;
-	q = mul64(gdz[0],j); q += (u64)gpz[0];
-	if (q < (u64)gxmax)
+	q = mul64(gdz[0],j); q += (uint64_t)gpz[0];
+	if (q < (uint64_t)gxmax)
 	{
 		gxmax = (long)q;
 	}
 	if (gixy[1] < 0) j = glipos.y; else j = VSID-1-glipos.y;
-	q = mul64(gdz[1],j); q += (u64)gpz[1];
-	if (q < (u64)gxmax)
+	q = mul64(gdz[1],j); q += (uint64_t)gpz[1];
+	if (q < (uint64_t)gxmax)
 	{
 		gxmax = (long)q;
 	}
@@ -822,13 +777,6 @@ static long initmap ()
 
 long initapp (long argc, char **argv)
 {
-	if (sizeof(u16) != 2 && sizeof(i16) != 2 && \
-			sizeof(u32) != 4 && sizeof(i32) != 4 && \
-			sizeof(u64) != 8 && sizeof(i64) != 8) {
-		puts("int sizes incorrect");
-		exit(1);
-	}
-
 	prognam = "\"Ken-VOXLAP\" test game";
 	xres = 640; yres = 480; colbits = 32; fullscreen = 0;
 
@@ -919,6 +867,13 @@ typedef struct
 } kzfilestate;
 static kzfilestate kzfs;
 
+static inline int filelength (int h)
+{
+	struct stat st;
+	if (fstat(h,&st) < 0) return(-1);
+	return(st.st_size);
+}
+
 static int kzopen (const char *filnam)
 {
 	kzfs.fil = fopen(filnam,"rb");
@@ -929,7 +884,7 @@ static int kzopen (const char *filnam)
 		exit(1);
 	}
 
-	kzfs.leng = filelength(_fileno(kzfs.fil));
+	kzfs.leng = filelength(fileno(kzfs.fil));
 	kzfs.pos = 0;
 	kzfs.i = 0;
 
