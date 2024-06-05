@@ -827,15 +827,14 @@ void doframe ()
 	float f, fmousx, fmousy;
 	long i, j, k, l;
 
-	if (!startdirectdraw(&i,&j,&k,&l)) goto skipalldraw;
+	if (startdirectdraw(&i,&j,&k,&l)) {
+		voxsetframebuffer(i,j,k,l);
+		setcamera(&ipos, &istr, &ihei, &ifor, xres*.5, yres*.5, xres*.5);
+		opticast();
 
-	voxsetframebuffer(i,j,k,l);
-	setcamera(&ipos,&istr,&ihei,&ifor,xres*.5,yres*.5,xres*.5);
-	opticast();
-
-	stopdirectdraw();
-	nextpage();
-skipalldraw:;
+		stopdirectdraw();
+		nextpage();
+	}
 
 		//Read keyboard, mouse, and timer
 	readkeyboard();
