@@ -1,0 +1,8 @@
+---
+Language:         Cpp
+BasedOnStyle:     WebKit
+IndentGotoLabels: false
+RemoveBracesLLVM: true
+TabWidth:         4
+UseTab:           AlignWithSpaces
+...
