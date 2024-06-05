@@ -48,25 +48,9 @@ static Uint32 *pixels = NULL;
 static int pitch = 0;
 static int surflocked = 0;
 
-#define MAXVALIDMODES 256
-static validmodetype validmodelist[MAXVALIDMODES];
-static long validmodecnt = 0;
-validmodetype curvidmodeinfo;
-
-
-static void gvmladd(long x, long y, char c)
-{
-	if (validmodecnt == MAXVALIDMODES) return;
-	memset(&validmodelist[validmodecnt], 0, sizeof(validmodetype));
-	validmodelist[validmodecnt].x = x;
-	validmodelist[validmodecnt].y = y;
-	validmodelist[validmodecnt].c = c;
-	validmodecnt++;
-}
-
 long getvalidmodelist (validmodetype **davalidmodelist)
 {
-	return(validmodecnt);
+	return 0;
 }
 
 void updatepalette (long start, long danum)
@@ -148,8 +132,6 @@ long initdirectdraw(long daxres, long dayres, long dacolbits)
 		puts("failed to create texture");
 		return 0;
 	}
-
-	memset(&curvidmodeinfo, 0, sizeof(validmodetype));
 
 	if (colbits == 8) updatepalette(0,256);
 

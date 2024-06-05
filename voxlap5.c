@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "sysmain.h"
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -80,40 +82,38 @@ struct
 } vx5;
 
 	//Initialization functions:
-extern long initvoxlap ();
-extern void uninitvoxlap ();
+static long initvoxlap ();
+static void uninitvoxlap ();
 
 	//File related functions:
-extern long loadsxl (const char *, char **, char **, char **);
-extern long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
+static long loadsxl (const char *, char **, char **, char **);
+static long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
 
 	//Screen related functions:
-extern void voxsetframebuffer (long, long, long, long);
-extern void setcamera (dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *, float, float, float);
-extern void opticast ();
+static void voxsetframebuffer (long, long, long, long);
+static void setcamera (dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *, float, float, float);
+static void opticast ();
 
 	//Physics helper functions:
-extern void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
+static void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
 
 	//VXL MISC functions:
-extern void updatebbox (long, long, long, long, long, long, long);
-extern void updatevxl ();
-extern void genmipvxl (long, long, long, long);
+static void updatebbox (long, long, long, long, long, long, long);
+static void updatevxl ();
+static void genmipvxl (long, long, long, long);
 
 	//ZIP functions:
-extern int kzopen (const char *);
-extern int kzread (void *, int);
-extern int kzfilelength ();
-extern int kztell ();
-extern void kzclose ();
-
-#include "sysmain.h"
+static int kzopen (const char *);
+static int kzread (void *, int);
+static int kzfilelength ();
+static int kztell ();
+static void kzclose ();
 
 #define PREC (256*4096)
 #define CMPPREC (256*4096)
 
 #define VOXSIZ VSID*VSID*128
-char *sptr[(VSID*VSID*4)/3];
+static char *sptr[(VSID*VSID*4)/3];
 static long *vbuf = 0, *vbit = 0, vbiti;
 	//WARNING: loaddta uses last 2MB of vbuf; vbuf:[VOXSIZ>>2], vbit:[VOXSIZ>>7]
 	//WARNING: loadpng uses last 4MB of vbuf; vbuf:[VOXSIZ>>2], vbit:[VOXSIZ>>7]
@@ -136,7 +136,7 @@ static long *vbuf = 0, *vbit = 0, vbiti;
 
 	//Memory management variables:
 #define MAXCSIZ 1028
-char tbuf[MAXCSIZ];
+static char tbuf[MAXCSIZ];
 
 static char nullst = 0; //nullst always NULL string
 
@@ -144,16 +144,13 @@ static char nullst = 0; //nullst always NULL string
 	//Rendering variables:
 typedef struct { long col, dist; } castdat;
 typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
-typedef struct { unsigned short x, y; } uspoint2d;
-typedef struct { long x, y; } lpoint2d;
-typedef struct { float x, y; } point2d;
 #pragma pack(pop)
 
-cftype cf[256];
+static cftype cf[256];
 
 	//Screen related variables:
 static long bytesperline, frameplace, xres4;
-long ylookup[MAXYDIM+1];
+static long ylookup[MAXYDIM+1];
 
 static lpoint3d glipos;
 static point3d gipos, gistr, gihei, gifor;
@@ -163,15 +160,14 @@ static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char *gstartv;
 
 	//Norm flash variables
-#define GSIZ 512  //NOTE: GSIZ should be 1<<x, and must be <= 65536
-static long bbuf[GSIZ][GSIZ>>5], p2c[32], p2m[32];      //bbuf: 2.0K
+static long p2c[32], p2m[32];      //bbuf: 2.0K
 
 	//Opticast global variables:
 	//radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
 	//radar: 400x300 requires  751836*2 bytes (area * 6.27*2)
 	//radar: 640x480 requires 1917568*2 bytes (area * 6.24*2)
 #define SCPITCH 256
-long *radar = 0, *radarmem = 0;
+static long *radar = 0, *radarmem = 0;
 static long *zbuffermem = 0, zbuffersiz = 0;
 static castdat *angstart[MAXXDIM*4], *gscanptr;
 #define CMPRECIPSIZ MAXXDIM+32
@@ -180,16 +176,12 @@ static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
-i64 gi, gcsub[8] =
-{
-	0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,
-	0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff,0xff00ff00ff00ff
-};
-long gylookup[512+36], gmipnum = 0; //256+4+128+4+64+4+...
-long gpz[2], gdz[2], gxmip, gxmax, gixy[2], gpixy;
+static i64 gi;
+static long gylookup[512+36], gmipnum = 0; //256+4+128+4+64+4+...
+static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
-long zbufoff;
+static long zbufoff;
 #define gi0 (((long *)&gi)[0])
 #define gi1 (((long *)&gi)[1])
 
@@ -270,7 +262,7 @@ static long slng (const char *s)
 	return((long)v-(long)s+(v[2]-v[1]+1)*4+4);
 }
 
-void voxdealloc (const char *v)
+static void voxdealloc (const char *v)
 {
 	long i, j;
 	i = (((long)v-(long)vbuf)>>2); j = (slng(v)>>2)+i;
@@ -289,7 +281,7 @@ void voxdealloc (const char *v)
 }
 
 	//Note: danum MUST be a multiple of 4!
-char *voxalloc (long danum)
+static char *voxalloc (long danum)
 {
 	long i, badcnt, p0, p1, vend;
 
@@ -313,7 +305,7 @@ allocnothere:;
 	evilquit("voxalloc: vbuf full"); return(0);
 }
 
-void gline (long leng, float x0, float y0, float x1, float y1)
+static void gline (long leng, float x0, float y0, float x1, float y1)
 {
 	i64 q;
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
@@ -482,32 +474,7 @@ deletez:;
 	goto afterdelete;
 }
 
-static long vspan (long x, long y0, long y1)
-{
-	long y, yy, *bbufx;
-
-	y = (y0>>5); bbufx = &bbuf[x][0];
-	if ((y1>>5) == y)
-	{
-		yy = bbufx[y]; bbufx[y] &= ~(p2m[y1&31]^p2m[y0&31]);
-		return(bbufx[y] ^ yy);
-	}
-
-	if (!(bbufx[y]&(~p2m[y0&31])))
-		if (!(bbufx[y1>>5]&p2m[y1&31]))
-		{
-			for(yy=(y1>>5)-1;yy>y;yy--)
-				if (bbufx[yy]) goto vspan_skip;
-			return(0);
-		}
-vspan_skip:;
-	bbufx[y] &= p2m[y0&31];
-	bbufx[y1>>5] &= (~p2m[y1&31]);
-	for(yy=(y1>>5)-1;yy>y;yy--) bbufx[yy] = 0;
-	return(1);
-}
-
-void hline (float x0, float y0, float x1, float y1, long *ix0, long *ix1)
+static void hline (float x0, float y0, float x1, float y1, long *ix0, long *ix1)
 {
 	float dyx;
 
@@ -525,7 +492,7 @@ void hline (float x0, float y0, float x1, float y1, long *ix0, long *ix1)
 									  (float)(*ix1),((*ix1)-x1)*dyx + y1);
 }
 
-void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
+static void vline (float x0, float y0, float x1, float y1, long *iy0, long *iy1)
 {
 	float dxy;
 
@@ -554,12 +521,11 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 #endif
 
 ALIGN(16) static point4d opti4[5];
-ALIGN(16) static void* opti4asm = opti4;
 
-void (*hrend)(long,long,long,long,long,long);
-void (*vrend)(long,long,long,long,long);
+static void (*hrend)(long,long,long,long,long,long);
+static void (*vrend)(long,long,long,long,long);
 
-void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
+static void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 {
 	long p0, i; float dirx, diry;
 	p0 = ylookup[sy]+(sx<<2)+frameplace;
@@ -575,7 +541,7 @@ void hrendz (long sx, long sy, long p1, long plc, long incr, long j)
 	} while (p0 != p1);
 }
 
-void vrendz (long sx, long sy, long p1, long iplc, long iinc)
+static void vrendz (long sx, long sy, long p1, long iplc, long iinc)
 {
 	float dirx, diry; long i, p0;
 	p0 = ylookup[sy]+(sx<<2)+frameplace;
@@ -591,11 +557,9 @@ void vrendz (long sx, long sy, long p1, long iplc, long iinc)
 	}
 }
 
-void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
-					 float dahx, float dahy, float dahz)
+static void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
+                       float dahx, float dahy, float dahz)
 {
-	long i, j;
-
 	gipos.x = ipo->x; gipos.y = ipo->y; gipos.z = ipo->z;
 	gistr.x = ist->x; gistr.y = ist->y; gistr.z = ist->z;
 	gihei.x = ihe->x; gihei.y = ihe->y; gihei.z = ihe->z;
@@ -623,7 +587,7 @@ void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
 	gcorn[3].z = yres*gihei.z+gcorn[0].z;
 }
 
-void opticast ()
+static void opticast ()
 {
 	float f, ff, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
 	long i, j, sx, sy, p0, p1, cx16, cy16, kadd, kmul, u, u1, ui;
@@ -843,11 +807,10 @@ void opticast ()
 	}
 }
 
-long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+static long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
-	FILE *fil;
-	long i, j, fsiz;
-	char *v, *v2;
+	long i, fsiz;
+	char *v;
 
 	if (!vbuf) { vbuf = (long *)malloc((VOXSIZ>>2)<<2); if (!vbuf) evilquit("vbuf malloc failed"); }
 	if (!vbit) { vbit = (long *)malloc((VOXSIZ>>7)<<2); if (!vbit) evilquit("vbuf malloc failed"); }
@@ -885,7 +848,7 @@ long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe
 	return(1);
 }
 
-void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+static void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 {
 	double f, t, dx, dy, dz, rr[9];
 
@@ -911,7 +874,7 @@ void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe
 
 static long mixc[MAXZDIM>>1][8]; //4K
 static long mixn[MAXZDIM>>1];    //0.5K
-void genmipvxl (long x0, long y0, long x1, long y1)
+static void genmipvxl (long x0, long y0, long x1, long y1)
 {
 	long i, n, oldn, x, y, z, xsiz, ysiz, zsiz, oxsiz, oysiz;
 	long cz, oz, nz, zz, besti, cstat, curz[4], curzn[4][4], mipnum, mipmax;
@@ -1106,9 +1069,9 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 static char *sxlbuf = 0;
 static long sxlparspos, sxlparslen;
 
-long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
+static long loadsxl (const char *sxlnam, char **vxlnam, char **skynam, char **globst)
 {
-	long j, k, m, n;
+	long j, m, n;
 
 		//NOTE: MUST buffer file because insertsprite uses kz file code :/
 	if (!kzopen(sxlnam)) return(0);
@@ -1151,7 +1114,7 @@ typedef struct { long x0, y0, z0, x1, y1, z1, csgdel; } bboxtyp;
 #define BBOXSIZ 256
 static bboxtyp bbox[BBOXSIZ];
 static long bboxnum = 0;
-void updatevxl ()
+static void updatevxl ()
 {
 	long i;
 
@@ -1163,7 +1126,7 @@ void updatevxl ()
 	bboxnum = 0;
 }
 
-void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1, long csgdel)
+static void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1, long csgdel)
 {
 	long i;
 
@@ -1191,7 +1154,7 @@ void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1, long csgd
 
 //----------------------------------------------------------------------------
 
-void voxsetframebuffer (long p, long b, long x, long y)
+static void voxsetframebuffer (long p, long b, long x, long y)
 {
 	long i;
 
@@ -1217,7 +1180,7 @@ void voxsetframebuffer (long p, long b, long x, long y)
 	uurend = &uurendmem[((frameplace&4)^(((long)uurendmem)&4))>>2];
 }
 
-void uninitvoxlap ()
+static void uninitvoxlap ()
 {
 	if (sxlbuf) { free(sxlbuf); sxlbuf = 0; }
 
@@ -1228,12 +1191,8 @@ void uninitvoxlap ()
 	if (radarmem) { free(radarmem); radarmem = 0; radar = 0; }
 }
 
-long initvoxlap ()
+static long initvoxlap ()
 {
-	i64 q;
-	long i, j, k, z, zz;
-	float f, ff;
-
 	if (sizeof(u16) != 2 && sizeof(i16) != 2 && \
 			sizeof(u32) != 4 && sizeof(i32) != 4 && \
 			sizeof(u64) != 8 && sizeof(i64) != 8) {
@@ -1247,9 +1206,9 @@ long initvoxlap ()
 	radar = (long *)((((long)radarmem)+7)&~7);
 
 		//Lookup table to save 1 divide for gline()
-	for(i=1;i<CMPRECIPSIZ;i++) cmprecip[i] = CMPPREC/(float)i;
+	for(long i=1;i<CMPRECIPSIZ;i++) cmprecip[i] = CMPPREC/(float)i;
 
-	for(z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
+	for(long z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
 
 	memset(mixn,0,sizeof(mixn));
 
@@ -1265,17 +1224,17 @@ long initvoxlap ()
 // ----- GAME.C code begins
 
 	//Player position variables:
-dpoint3d ipos, istr, ihei, ifor, ivel;
+static dpoint3d ipos, istr, ihei, ifor, ivel;
 
 	//Mouse button state global variables:
-long obstatus = 0, bstatus = 0;
+static long obstatus = 0, bstatus = 0;
 
 	//Timer global variables:
-double odtotclk, dtotclk;
-float fsynctics;
-long totclk;
+static double odtotclk, dtotclk;
+static float fsynctics;
+static long totclk;
 
-long initmap ()
+static long initmap ()
 {
 	char cursxlnam[MAX_PATH+1] = "vxl/default.sxl";
 	char *vxlnam, *skynam, *userst;
@@ -1321,7 +1280,6 @@ long initapp (long argc, char **argv)
 
 void uninitapp ()
 {
-	long i;
 	uninitvoxlap();
 }
 
@@ -1381,7 +1339,7 @@ typedef struct
 } kzfilestate;
 static kzfilestate kzfs;
 
-int kzopen (const char *filnam)
+static int kzopen (const char *filnam)
 {
 	kzfs.fil = fopen(filnam,"rb");
 
@@ -1399,9 +1357,9 @@ int kzopen (const char *filnam)
 }
 
 	//returns number of bytes copied
-int kzread (void *buffer, int leng)
+static int kzread (void *buffer, int leng)
 {
-	int i, j, k, btype, hlit, hdist;
+	int i;
 
 	if ((!kzfs.fil) || (leng <= 0)) return(0);
 
@@ -1416,19 +1374,19 @@ int kzread (void *buffer, int leng)
 	return(kzfs.pos-i);
 }
 
-int kzfilelength ()
+static int kzfilelength ()
 {
 	if (!kzfs.fil) return(0);
 	return(kzfs.leng);
 }
 
-int kztell ()
+static int kztell ()
 {
 	if (!kzfs.fil) return(-1);
 	return(kzfs.pos);
 }
 
-void kzclose ()
+static void kzclose ()
 {
 	if (kzfs.fil) { fclose(kzfs.fil); kzfs.fil = 0; }
 }

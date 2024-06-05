@@ -6,6 +6,8 @@ voxlap: voxlap5.c sdlmain.c
 		/home/rbakbashev/build/vox/my/slab6/SDL2inst/lib/libSDL2.a \
 		-lm \
 		-g \
+		-Wall \
+		-Wno-misleading-indentation -Wno-char-subscripts \
 		-funsigned-char
 	./$@
 
