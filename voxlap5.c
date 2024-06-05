@@ -96,9 +96,6 @@ static void opticast ();
 	//Physics helper functions:
 static void dorthorotate (double, double, double, dpoint3d *, dpoint3d *, dpoint3d *);
 
-	//VXL MISC functions:
-static void updatebbox (long, long, long, long, long, long);
-
 	//ZIP functions:
 static int kzopen (const char *);
 static int kzread (void *, int);
@@ -167,14 +164,13 @@ static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
-static i64 gi;
 static long gylookup[512+36]; //256+4+128+4+64+4+...
 static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
 static long zbufoff;
-#define gi0 (((long *)&gi)[0])
-#define gi1 (((long *)&gi)[1])
+static long gi0;
+static long gi1;
 
 static _inline void dcossin (double a, double *c, double *s)
 {
@@ -218,11 +214,6 @@ static _inline long isshldiv16safe (long a, long b)
 static _inline long dmulrethigh (long b, long c, long a, long d)
 {
 	return (u64)(c * (i64)b - d * (i64)a) >> 32;
-}
-
-static _inline void copybuf (void *s, void *d, long c)
-{
-	memcpy(d, s, c << 2);
 }
 
 static _inline void clearbuf (void *d, long c, long a)
@@ -769,7 +760,6 @@ static long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint
 	clearbuf((void *)&vbit[vbiti>>5],(VOXSIZ>>7)-(vbiti>>5),0);
 	vbit[vbiti>>5] = (1<<vbiti)-1;
 
-	updatebbox(0,0,0,VSID,VSID,MAXZDIM);
 	return(1);
 }
 
@@ -795,21 +785,6 @@ static void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint
 	ist->z = ox*rr[0] + oy*rr[3] + oz*rr[6];
 	ihe->z = ox*rr[1] + oy*rr[4] + oz*rr[7];
 	ifo->z = ox*rr[2] + oy*rr[5] + oz*rr[8];
-}
-
-typedef struct { long x0, y0, z0, x1, y1, z1; } bboxtyp;
-#define BBOXSIZ 256
-static bboxtyp bbox[BBOXSIZ];
-static long bboxnum = 0;
-
-static void updatebbox (long x0, long y0, long z0, long x1, long y1, long z1)
-{
-	if ((x0 >= x1) || (y0 >= y1) || (z0 >= z1)) return;
-
-	bbox[bboxnum].x0 = x0; bbox[bboxnum].x1 = x1;
-	bbox[bboxnum].y0 = y0; bbox[bboxnum].y1 = y1;
-	bbox[bboxnum].z0 = z0; bbox[bboxnum].z1 = z1;
-	bboxnum++;
 }
 
 //----------------------------------------------------------------------------
