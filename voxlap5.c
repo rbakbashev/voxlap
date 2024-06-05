@@ -195,137 +195,59 @@ long zbufoff;
 #define gi0 (((long *)&gi)[0])
 #define gi1 (((long *)&gi)[1])
 
-#ifdef _MSC_VER
-
-#pragma warning(disable:4799) //I know how to use EMMS
-
 static _inline void dcossin (double a, double *c, double *s)
 {
-	_asm
-	{
-		fld a
-		fsincos
-		mov eax, c
-		fstp qword ptr [eax]
-		mov eax, s
-		fstp qword ptr [eax]
-	}
+	*c = cos(a);
+	*s = sin(a);
 }
 
 static _inline void ftol (float f, long *a)
 {
-	_asm
-	{
-		mov eax, a
-		fld f
-		fistp dword ptr [eax]
-	}
+	*a = (long)floorf(f + 0.5f);
 }
 
-static _inline long mulshr16 (long a, long d)
+static _inline i32 mulshr16 (i32 a, i32 d)
 {
-	_asm
-	{
-		mov eax, a
-		mov edx, d
-		imul edx
-		shrd eax, edx, 16
-	}
+	return ((i64)a * (i64)d) >> 16;
 }
 
-static _inline i64 mul64 (long a, long d)
+static _inline i64 mul64 (i32 a, i32 d)
 {
-	_asm
-	{
-		mov eax, a
-		imul d
-	}
+	return (i64)a * (i64)d;
 }
 
 static _inline long shldiv16 (long a, long b)
 {
-	_asm
-	{
-		mov eax, a
-		mov edx, eax
-		shl eax, 16
-		sar edx, 16
-		idiv b
-	}
+	i64 div = ((i64)(a >> 16) << 32) + (i64)(a << 16);
+
+	return div / (i64)b;
 }
 
 static _inline long isshldiv16safe (long a, long b)
 {
-	_asm
-	{
-		mov edx, a
-		test edx, edx
-		js short skipneg0
-		neg edx
-skipneg0:
-		sar edx, 14
+	if (a >= 0)
+		a = -a;
 
-		mov eax, b
-		test eax, eax
-		js short skipneg1
-		neg eax
-skipneg1:
-			;abs((a<<16)/b) < (1<<30) ;1 extra for good luck!
-			;-abs(a)>>14 > -abs(b)    ;use -abs because safe for 0x80000000
-			;eax-edx < 0
-		sub eax, edx
-		shr eax, 31
-	}
+	if (b >= 0)
+		b = -b;
+
+	return (b - (a >> 14)) >> 31;
 }
 
 static _inline long dmulrethigh (long b, long c, long a, long d)
 {
-	_asm
-	{
-		mov eax, a
-		imul d
-		mov ecx, eax
-		push edx
-		mov eax, b
-		imul c
-		sub eax, ecx
-		pop ecx
-		sbb edx, ecx
-		mov eax, edx
-	}
+	return (u64)(c * (i64)b - d * (i64)a) >> 32;
 }
 
 static _inline void copybuf (void *s, void *d, long c)
 {
-	_asm
-	{
-		push esi
-		push edi
-		mov esi, s
-		mov edi, d
-		mov ecx, c
-		rep movsd
-		pop edi
-		pop esi
-	}
+	memcpy(d, s, c << 2);
 }
 
 static _inline void clearbuf (void *d, long c, long a)
 {
-	_asm
-	{
-		push edi
-		mov edi, d
-		mov ecx, c
-		mov eax, a
-		rep stosd
-		pop edi
-	}
+	memset(d, a, c << 2);
 }
-
-#else
-#pragma message ("Compiler says it isn't Visual C.")
-#endif
 
 	//if (a < 0) return(0); else if (a > b) return(b); else return(a);
 static _inline long lbound0 (long a, long b) //b MUST be >= 0
