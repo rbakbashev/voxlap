@@ -69,7 +69,6 @@ static __inline int filelength (int h)
 
 typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
-typedef struct { float x, y, z, z2; } point4d;
 typedef struct { double x, y, z; } dpoint3d;
 
 #pragma pack(pop)
@@ -80,10 +79,6 @@ struct
 		//Opticast variables:
 	long anginc, maxscandist;
 } vx5;
-
-	//Initialization functions:
-static long initvoxlap ();
-static void uninitvoxlap ();
 
 	//File related functions:
 static long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
@@ -795,40 +790,6 @@ static void voxsetframebuffer (long p, long b, long x, long y)
 	uurend = &uurendmem[((frameplace&4)^(((long)uurendmem)&4))>>2];
 }
 
-static void uninitvoxlap ()
-{
-	if (vbuf) { free(vbuf); vbuf = 0; }
-	if (vbit) { free(vbit); vbit = 0; }
-
-	if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
-	if (radarmem) { free(radarmem); radarmem = 0; radar = 0; }
-}
-
-static long initvoxlap ()
-{
-	if (sizeof(u16) != 2 && sizeof(i16) != 2 && \
-			sizeof(u32) != 4 && sizeof(i32) != 4 && \
-			sizeof(u64) != 8 && sizeof(i64) != 8) {
-		puts("int sizes incorrect");
-		exit(1);
-	}
-
-	  //WARNING: xres&yres are local to VOXLAP5.C so don't rely on them here!
-	if (!(radarmem = (long *)malloc(max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8))))
-		return(-1);
-	radar = (long *)((((long)radarmem)+7)&~7);
-
-		//Lookup table to save 1 divide for gline()
-	for(long i=1;i<CMPRECIPSIZ;i++) cmprecip[i] = CMPPREC/(float)i;
-
-	for(long z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
-
-	vx5.anginc = 1; //Higher=faster (1:full,2:half)
-	vx5.maxscandist = 256; //must be <= 2047
-
-	return(0);
-}
-
 // ----- GAME.C code begins
 
 	//Player position variables:
@@ -854,10 +815,28 @@ static long initmap ()
 
 long initapp (long argc, char **argv)
 {
+	if (sizeof(u16) != 2 && sizeof(i16) != 2 && \
+			sizeof(u32) != 4 && sizeof(i32) != 4 && \
+			sizeof(u64) != 8 && sizeof(i64) != 8) {
+		puts("int sizes incorrect");
+		exit(1);
+	}
+
 	prognam = "\"Ken-VOXLAP\" test game";
 	xres = 640; yres = 480; colbits = 32; fullscreen = 0;
 
-	if (initvoxlap() < 0) return(-1);
+	  //WARNING: xres&yres are local to VOXLAP5.C so don't rely on them here!
+	if (!(radarmem = (long *)malloc(max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8))))
+		return(-1);
+	radar = (long *)((((long)radarmem)+7)&~7);
+
+		//Lookup table to save 1 divide for gline()
+	for(long i=1;i<CMPRECIPSIZ;i++) cmprecip[i] = CMPPREC/(float)i;
+
+	for(long z=0;z<32;z++) { p2c[z] = (1<<z); p2m[z] = p2c[z]-1; }
+
+	vx5.anginc = 1; //Higher=faster (1:full,2:half)
+	vx5.maxscandist = 256; //must be <= 2047
 
 	if (initmap() < 0) return(-1);
 
@@ -871,7 +850,11 @@ long initapp (long argc, char **argv)
 
 void uninitapp ()
 {
-	uninitvoxlap();
+	if (vbuf) { free(vbuf); vbuf = 0; }
+	if (vbit) { free(vbit); vbit = 0; }
+
+	if (zbuffermem) { free(zbuffermem); zbuffermem = 0; }
+	if (radarmem) { free(radarmem); radarmem = 0; radar = 0; }
 }
 
 void doframe ()
