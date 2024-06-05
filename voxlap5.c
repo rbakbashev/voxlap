@@ -22,11 +22,9 @@
 #define VSID 1024   //Maximum .VXL dimensions in both x & y direction
 #define MAXZDIM 256 //Maximum .VXL dimensions in z direction (height)
 
-#pragma pack(push,1)
 typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 typedef struct { double x, y, z; } dpoint3d;
-#pragma pack(pop)
 
 	//File related functions:
 static long loadvxl (const char *, dpoint3d *, dpoint3d *, dpoint3d *, dpoint3d *);
@@ -74,11 +72,9 @@ static long *vbuf = 0;
 //             slab size with slng() and used as a separator for fcol/ccol
 //       z0: z ceiling (bottom of ceiling color list)
 
-#pragma pack(push,1)
 	//Rendering variables:
 typedef struct { long col, dist; } castdat;
 typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
-#pragma pack(pop)
 
 static cftype cf[256];
 
@@ -902,7 +898,7 @@ static int kzopen (const char *filnam)
 	kzfs.pos = 0;
 	kzfs.i = 0;
 
-	return (int)kzfs.fil;
+	return kzfs.fil != NULL;
 }
 
 	//returns number of bytes copied
