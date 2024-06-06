@@ -45,7 +45,7 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 // Opticast variables:
 long anginc, maxscandist;
 
-#define VOXSIZ VSID* VSID * 128
+#define VOXSIZ VSID * VSID * 128
 static char* sptr[(VSID * VSID * 4) / 3];
 static long* vbuf = 0;
 
@@ -557,10 +557,250 @@ static void setcamera(dpoint3d* ipo, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo
 	gcorn[3].z = yres * gihei.z + gcorn[0].z;
 }
 
+static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16, float cy16)
+{
+	long j, i, p0, p1, kadd, sy, kmul, ui, u, u1;
+	float ff, f;
+
+	ftol((x1 - x0) / anginc, &j);
+	if ((fy < 0) && (j > 0)) //(cx,cy),(x0,wy0),(x1,wy0)
+	{
+		ff = (x1 - x0) / (float)j;
+		grd = 1.0f / (wy0 - cy);
+		gscanptr = (castdat*)radar;
+		for (i = 0, f = x0 + ff * .5f; i < j; f += ff, i++) {
+			vline(cx, cy, f, wy0, &p0, &p1);
+			if (giforzsgn < 0)
+				angstart[i] = gscanptr + p0;
+			else
+				angstart[i] = gscanptr - p1;
+			gscanptr += labs(p1 - p0) + 1;
+		}
+
+		j <<= 16;
+		f = (float)j / ((x1 - x0) * grd);
+		ftol((cx - x0) * grd * f, &kadd);
+		ftol(cx - .5f, &p1);
+		p0 = lbound0(p1 + 1, xres);
+		p1 = lbound0(p1, xres);
+		ftol(cy - 0.50005f, &sy);
+		if (sy >= yres)
+			sy = yres - 1;
+		ff = (fabs((float)p1 - cx) + 1) * f / 2147483647.0 + cy; // Anti-crash hack
+		while ((ff < sy) && (sy >= 0))
+			sy--;
+		if (sy >= 0) {
+			ftol(f, &kmul);
+			for (; sy >= 0; sy--)
+				if (isshldiv16safe(kmul, (sy << 16) - cy16))
+					break; // Anti-crash hack
+			if (giforzsgn < 0)
+				i = -sy;
+			else
+				i = sy;
+			for (; sy >= 0; sy--, i -= giforzsgn) {
+				ui = shldiv16(kmul, (sy << 16) - cy16);
+				u = mulshr16((p0 << 16) - cx16, ui) + kadd;
+				while ((p0 > 0) && (u >= ui)) {
+					u -= ui;
+					p0--;
+				}
+				u1 = (p1 - p0) * ui + u;
+				while ((p1 < xres) && (u1 < j)) {
+					u1 += ui;
+					p1++;
+				}
+				if (p0 < p1)
+					hrendz(p0, sy, p1, u, ui, i);
+			}
+		}
+	}
+}
+
+static void castx1(float y1, float y2, float gx, float cx, float cy, float cx16, float cy16)
+{
+	long j, i, p0, p1, kadd, sx, kmul, ui, u;
+	float ff, f;
+
+	ftol((y2 - y1) / anginc, &j);
+	if ((gx > 0) && (j > 0)) //(cx,cy),(wx1,y1),(wx1,y2)
+	{
+		ff = (y2 - y1) / (float)j;
+		grd = 1.0f / (wx1 - cx);
+		gscanptr = (castdat*)radar;
+		for (i = 0, f = y1 + ff * .5f; i < j; f += ff, i++) {
+			hline(cx, cy, wx1, f, &p0, &p1);
+			if (giforzsgn < 0)
+				angstart[i] = gscanptr - p0;
+			else
+				angstart[i] = gscanptr + p1;
+			gscanptr += labs(p1 - p0) + 1;
+		}
+
+		j <<= 16;
+		f = (float)j / ((y2 - y1) * grd);
+		ftol((cy - y1) * grd * f, &kadd);
+		ftol(cy - .5f, &p1);
+		p0 = lbound0(p1 + 1, yres);
+		p1 = lbound0(p1, yres);
+		ftol(cx + 0.50005f, &sx);
+		if (sx < 0)
+			sx = 0;
+		ff = (fabs((float)p1 - cy) + 1) * f / 2147483647.0 + cx; // Anti-crash hack
+		while ((ff > sx) && (sx < xres))
+			sx++;
+		if (sx < xres) {
+			ftol(f, &kmul);
+			for (; sx < xres; sx++)
+				if (isshldiv16safe(kmul, (sx << 16) - cx16))
+					break; // Anti-crash hack
+			for (; sx < xres; sx++) {
+				ui = shldiv16(kmul, (sx << 16) - cx16);
+				u = mulshr16((p0 << 16) - cy16, ui) + kadd;
+				while ((p0 > 0) && (u >= ui)) {
+					u -= ui;
+					lastx[--p0] = sx;
+				}
+				uurend[sx] = u;
+				uurend[sx + MAXXDIM] = ui;
+				u += (p1 - p0) * ui;
+				while ((p1 < yres) && (u < j)) {
+					u += ui;
+					lastx[p1++] = sx;
+				}
+			}
+			if (giforzsgn < 0)
+				for (long sy = p0; sy < p1; sy++)
+					vrendz(lastx[sy], sy, xres, lastx[sy], 1);
+			else
+				for (long sy = p0; sy < p1; sy++)
+					vrendz(lastx[sy], sy, xres, -lastx[sy], -1);
+		}
+	}
+}
+
+static void casty2(float x2, float x3, float gy, float cx, float cy, float cx16, float cy16)
+{
+	long j, i, p0, p1, kadd, sy, kmul, ui, u, u1;
+	float ff, f;
+
+	ftol((x2 - x3) / anginc, &j);
+	if ((gy > 0) && (j > 0)) //(cx,cy),(x2,wy1),(x3,wy1)
+	{
+		ff = (x2 - x3) / (float)j;
+		grd = 1.0f / (wy1 - cy);
+		gscanptr = (castdat*)radar;
+		for (i = 0, f = x3 + ff * .5f; i < j; f += ff, i++) {
+			vline(cx, cy, f, wy1, &p0, &p1);
+			if (giforzsgn < 0)
+				angstart[i] = gscanptr - p0;
+			else
+				angstart[i] = gscanptr + p1;
+			gscanptr += labs(p1 - p0) + 1;
+		}
+
+		j <<= 16;
+		f = (float)j / ((x2 - x3) * grd);
+		ftol((cx - x3) * grd * f, &kadd);
+		ftol(cx - .5f, &p1);
+		p0 = lbound0(p1 + 1, xres);
+		p1 = lbound0(p1, xres);
+		ftol(cy + 0.50005f, &sy);
+		if (sy < 0)
+			sy = 0;
+		ff = (fabs((float)p1 - cx) + 1) * f / 2147483647.0 + cy; // Anti-crash hack
+		while ((ff > sy) && (sy < yres))
+			sy++;
+		if (sy < yres) {
+			ftol(f, &kmul);
+			for (; sy < yres; sy++)
+				if (isshldiv16safe(kmul, (sy << 16) - cy16))
+					break; // Anti-crash hack
+			if (giforzsgn < 0)
+				i = sy;
+			else
+				i = -sy;
+			for (; sy < yres; sy++, i -= giforzsgn) {
+				ui = shldiv16(kmul, (sy << 16) - cy16);
+				u = mulshr16((p0 << 16) - cx16, ui) + kadd;
+				while ((p0 > 0) && (u >= ui)) {
+					u -= ui;
+					p0--;
+				}
+				u1 = (p1 - p0) * ui + u;
+				while ((p1 < xres) && (u1 < j)) {
+					u1 += ui;
+					p1++;
+				}
+				if (p0 < p1)
+					hrendz(p0, sy, p1, u, ui, i);
+			}
+		}
+	}
+}
+
+static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16, float cy16)
+{
+	long j, i, p0, p1, kadd, sx, kmul, ui, u;
+	float ff, f;
+
+	ftol((y3 - y0) / anginc, &j);
+	if ((fx < 0) && (j > 0)) //(cx,cy),(wx0,y3),(wx0,y0)
+	{
+		ff = (y3 - y0) / (float)j;
+		grd = 1.0f / (wx0 - cx);
+		gscanptr = (castdat*)radar;
+		for (i = 0, f = y0 + ff * .5f; i < j; f += ff, i++) {
+			hline(cx, cy, wx0, f, &p0, &p1);
+			if (giforzsgn < 0)
+				angstart[i] = gscanptr + p0;
+			else
+				angstart[i] = gscanptr - p1;
+			gscanptr += labs(p1 - p0) + 1;
+		}
+
+		j <<= 16;
+		f = (float)j / ((y3 - y0) * grd);
+		ftol((cy - y0) * grd * f, &kadd);
+		ftol(cy - .5f, &p1);
+		p0 = lbound0(p1 + 1, yres);
+		p1 = lbound0(p1, yres);
+		ftol(cx - 0.50005f, &sx);
+		if (sx >= xres)
+			sx = xres - 1;
+		ff = (fabs((float)p1 - cy) + 1) * f / 2147483647.0 + cx; // Anti-crash hack
+		while ((ff < sx) && (sx >= 0))
+			sx--;
+		if (sx >= 0) {
+			ftol(f, &kmul);
+			for (; sx >= 0; sx--)
+				if (isshldiv16safe(kmul, (sx << 16) - cx16))
+					break; // Anti-crash hack
+			for (; sx >= 0; sx--) {
+				ui = shldiv16(kmul, (sx << 16) - cx16);
+				u = mulshr16((p0 << 16) - cy16, ui) + kadd;
+				while ((p0 > 0) && (u >= ui)) {
+					u -= ui;
+					lastx[--p0] = sx;
+				}
+				uurend[sx] = u;
+				uurend[sx + MAXXDIM] = ui;
+				u += (p1 - p0) * ui;
+				while ((p1 < yres) && (u < j)) {
+					u += ui;
+					lastx[p1++] = sx;
+				}
+			}
+			for (long sy = p0; sy < p1; sy++)
+				vrendz(0, sy, lastx[sy] + 1, 0, giforzsgn);
+		}
+	}
+}
+
 static void opticast()
 {
-	float f, ff, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
-	long i, j, sx, sy, p0, p1, cx16, cy16, kadd, kmul, u, u1, ui;
+	float f, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
+	long i, cx16, cy16;
 
 	if (gifor.z < 0)
 		giforzsgn = -1;
@@ -690,221 +930,10 @@ static void opticast()
 	ftol(cx * 65536, &cx16);
 	ftol(cy * 65536, &cy16);
 
-	ftol((x1 - x0) / anginc, &j);
-	if ((fy < 0) && (j > 0)) //(cx,cy),(x0,wy0),(x1,wy0)
-	{
-		ff = (x1 - x0) / (float)j;
-		grd = 1.0f / (wy0 - cy);
-		gscanptr = (castdat*)radar;
-		for (i = 0, f = x0 + ff * .5f; i < j; f += ff, i++) {
-			vline(cx, cy, f, wy0, &p0, &p1);
-			if (giforzsgn < 0)
-				angstart[i] = gscanptr + p0;
-			else
-				angstart[i] = gscanptr - p1;
-			gscanptr += labs(p1 - p0) + 1;
-		}
-
-		j <<= 16;
-		f = (float)j / ((x1 - x0) * grd);
-		ftol((cx - x0) * grd * f, &kadd);
-		ftol(cx - .5f, &p1);
-		p0 = lbound0(p1 + 1, xres);
-		p1 = lbound0(p1, xres);
-		ftol(cy - 0.50005f, &sy);
-		if (sy >= yres)
-			sy = yres - 1;
-		ff = (fabs((float)p1 - cx) + 1) * f / 2147483647.0 + cy; // Anti-crash hack
-		while ((ff < sy) && (sy >= 0))
-			sy--;
-		if (sy >= 0) {
-			ftol(f, &kmul);
-			for (; sy >= 0; sy--)
-				if (isshldiv16safe(kmul, (sy << 16) - cy16))
-					break; // Anti-crash hack
-			if (giforzsgn < 0)
-				i = -sy;
-			else
-				i = sy;
-			for (; sy >= 0; sy--, i -= giforzsgn) {
-				ui = shldiv16(kmul, (sy << 16) - cy16);
-				u = mulshr16((p0 << 16) - cx16, ui) + kadd;
-				while ((p0 > 0) && (u >= ui)) {
-					u -= ui;
-					p0--;
-				}
-				u1 = (p1 - p0) * ui + u;
-				while ((p1 < xres) && (u1 < j)) {
-					u1 += ui;
-					p1++;
-				}
-				if (p0 < p1)
-					hrendz(p0, sy, p1, u, ui, i);
-			}
-		}
-	}
-
-	ftol((y2 - y1) / anginc, &j);
-	if ((gx > 0) && (j > 0)) //(cx,cy),(wx1,y1),(wx1,y2)
-	{
-		ff = (y2 - y1) / (float)j;
-		grd = 1.0f / (wx1 - cx);
-		gscanptr = (castdat*)radar;
-		for (i = 0, f = y1 + ff * .5f; i < j; f += ff, i++) {
-			hline(cx, cy, wx1, f, &p0, &p1);
-			if (giforzsgn < 0)
-				angstart[i] = gscanptr - p0;
-			else
-				angstart[i] = gscanptr + p1;
-			gscanptr += labs(p1 - p0) + 1;
-		}
-
-		j <<= 16;
-		f = (float)j / ((y2 - y1) * grd);
-		ftol((cy - y1) * grd * f, &kadd);
-		ftol(cy - .5f, &p1);
-		p0 = lbound0(p1 + 1, yres);
-		p1 = lbound0(p1, yres);
-		ftol(cx + 0.50005f, &sx);
-		if (sx < 0)
-			sx = 0;
-		ff = (fabs((float)p1 - cy) + 1) * f / 2147483647.0 + cx; // Anti-crash hack
-		while ((ff > sx) && (sx < xres))
-			sx++;
-		if (sx < xres) {
-			ftol(f, &kmul);
-			for (; sx < xres; sx++)
-				if (isshldiv16safe(kmul, (sx << 16) - cx16))
-					break; // Anti-crash hack
-			for (; sx < xres; sx++) {
-				ui = shldiv16(kmul, (sx << 16) - cx16);
-				u = mulshr16((p0 << 16) - cy16, ui) + kadd;
-				while ((p0 > 0) && (u >= ui)) {
-					u -= ui;
-					lastx[--p0] = sx;
-				}
-				uurend[sx] = u;
-				uurend[sx + MAXXDIM] = ui;
-				u += (p1 - p0) * ui;
-				while ((p1 < yres) && (u < j)) {
-					u += ui;
-					lastx[p1++] = sx;
-				}
-			}
-			if (giforzsgn < 0)
-				for (sy = p0; sy < p1; sy++)
-					vrendz(lastx[sy], sy, xres, lastx[sy], 1);
-			else
-				for (sy = p0; sy < p1; sy++)
-					vrendz(lastx[sy], sy, xres, -lastx[sy], -1);
-		}
-	}
-
-	ftol((x2 - x3) / anginc, &j);
-	if ((gy > 0) && (j > 0)) //(cx,cy),(x2,wy1),(x3,wy1)
-	{
-		ff = (x2 - x3) / (float)j;
-		grd = 1.0f / (wy1 - cy);
-		gscanptr = (castdat*)radar;
-		for (i = 0, f = x3 + ff * .5f; i < j; f += ff, i++) {
-			vline(cx, cy, f, wy1, &p0, &p1);
-			if (giforzsgn < 0)
-				angstart[i] = gscanptr - p0;
-			else
-				angstart[i] = gscanptr + p1;
-			gscanptr += labs(p1 - p0) + 1;
-		}
-
-		j <<= 16;
-		f = (float)j / ((x2 - x3) * grd);
-		ftol((cx - x3) * grd * f, &kadd);
-		ftol(cx - .5f, &p1);
-		p0 = lbound0(p1 + 1, xres);
-		p1 = lbound0(p1, xres);
-		ftol(cy + 0.50005f, &sy);
-		if (sy < 0)
-			sy = 0;
-		ff = (fabs((float)p1 - cx) + 1) * f / 2147483647.0 + cy; // Anti-crash hack
-		while ((ff > sy) && (sy < yres))
-			sy++;
-		if (sy < yres) {
-			ftol(f, &kmul);
-			for (; sy < yres; sy++)
-				if (isshldiv16safe(kmul, (sy << 16) - cy16))
-					break; // Anti-crash hack
-			if (giforzsgn < 0)
-				i = sy;
-			else
-				i = -sy;
-			for (; sy < yres; sy++, i -= giforzsgn) {
-				ui = shldiv16(kmul, (sy << 16) - cy16);
-				u = mulshr16((p0 << 16) - cx16, ui) + kadd;
-				while ((p0 > 0) && (u >= ui)) {
-					u -= ui;
-					p0--;
-				}
-				u1 = (p1 - p0) * ui + u;
-				while ((p1 < xres) && (u1 < j)) {
-					u1 += ui;
-					p1++;
-				}
-				if (p0 < p1)
-					hrendz(p0, sy, p1, u, ui, i);
-			}
-		}
-	}
-
-	ftol((y3 - y0) / anginc, &j);
-	if ((fx < 0) && (j > 0)) //(cx,cy),(wx0,y3),(wx0,y0)
-	{
-		ff = (y3 - y0) / (float)j;
-		grd = 1.0f / (wx0 - cx);
-		gscanptr = (castdat*)radar;
-		for (i = 0, f = y0 + ff * .5f; i < j; f += ff, i++) {
-			hline(cx, cy, wx0, f, &p0, &p1);
-			if (giforzsgn < 0)
-				angstart[i] = gscanptr + p0;
-			else
-				angstart[i] = gscanptr - p1;
-			gscanptr += labs(p1 - p0) + 1;
-		}
-
-		j <<= 16;
-		f = (float)j / ((y3 - y0) * grd);
-		ftol((cy - y0) * grd * f, &kadd);
-		ftol(cy - .5f, &p1);
-		p0 = lbound0(p1 + 1, yres);
-		p1 = lbound0(p1, yres);
-		ftol(cx - 0.50005f, &sx);
-		if (sx >= xres)
-			sx = xres - 1;
-		ff = (fabs((float)p1 - cy) + 1) * f / 2147483647.0 + cx; // Anti-crash hack
-		while ((ff < sx) && (sx >= 0))
-			sx--;
-		if (sx >= 0) {
-			ftol(f, &kmul);
-			for (; sx >= 0; sx--)
-				if (isshldiv16safe(kmul, (sx << 16) - cx16))
-					break; // Anti-crash hack
-			for (; sx >= 0; sx--) {
-				ui = shldiv16(kmul, (sx << 16) - cx16);
-				u = mulshr16((p0 << 16) - cy16, ui) + kadd;
-				while ((p0 > 0) && (u >= ui)) {
-					u -= ui;
-					lastx[--p0] = sx;
-				}
-				uurend[sx] = u;
-				uurend[sx + MAXXDIM] = ui;
-				u += (p1 - p0) * ui;
-				while ((p1 < yres) && (u < j)) {
-					u += ui;
-					lastx[p1++] = sx;
-				}
-			}
-			for (sy = p0; sy < p1; sy++)
-				vrendz(0, sy, lastx[sy] + 1, 0, giforzsgn);
-		}
-	}
+	casty1(x0, x1, fy, cx, cy, cx16, cy16);
+	castx1(y1, y2, gx, cx, cy, cx16, cy16);
+	casty2(x2, x3, gy, cx, cy, cx16, cy16);
+	castx2(y0, y3, fx, cx, cy, cx16, cy16);
 }
 
 static inline int filelength(int h)
@@ -957,8 +986,8 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3
 	fread(ifo, 24, 1, fil);
 	pos += 24 * 4;
 
-	v = (char*)(&vbuf[1]); // 1st dword for voxalloc compare logic optimization
-	fread((void*)v, fsiz - pos, 1, fil);
+	v = (char*)vbuf;
+	fread(v, fsiz - pos, 1, fil);
 
 	for (i = 0; i < VSID * VSID; i++) {
 		sptr[i] = v;
