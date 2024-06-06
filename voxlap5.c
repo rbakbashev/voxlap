@@ -151,11 +151,6 @@ static inline long dmulrethigh(long b, long c, long a, long d)
 	return (uint64_t)(c * (int64_t)b - d * (int64_t)a) >> 32;
 }
 
-static inline void clearbuf(void* d, long c, long a)
-{
-	memset(d, a, c << 2);
-}
-
 // if (a < 0) return(0); else if (a > b) return(b); else return(a);
 static inline long lbound0(long a, long b) // b MUST be >= 0
 {
@@ -433,8 +428,13 @@ static void hline(float x0, float y0, float x1, float y1, long* ix0, long* ix1)
 	if ((*ix0) > iwx1)
 		(*ix0) = iwx1; //(*ix1) = min(max(*ix1,wx0),wx1);
 
-	gline(labs((*ix1) - (*ix0)), (float)(*ix0), ((*ix0) - x1) * dyx + y1,
-		(float)(*ix1), ((*ix1) - x1) * dyx + y1);
+	gline(
+			labs((*ix1) - (*ix0)),
+			(float)(*ix0),
+			((*ix0) - x1) * dyx + y1,
+			(float)(*ix1),
+			((*ix1) - x1) * dyx + y1
+		);
 }
 
 static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
@@ -462,8 +462,13 @@ static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
 	if ((*iy0) > iwy1)
 		(*iy0) = iwy1;
 
-	gline(labs((*iy1) - (*iy0)), ((*iy0) - y1) * dxy + x1, (float)(*iy0),
-		((*iy1) - y1) * dxy + x1, (float)(*iy1));
+	gline(
+			labs((*iy1) - (*iy0)),
+			((*iy0) - y1) * dxy + x1,
+			(float)(*iy0),
+			((*iy1) - y1) * dxy + x1,
+			(float)(*iy1)
+		);
 }
 
 static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
@@ -905,11 +910,9 @@ static void opticast()
 static inline int filelength(int h)
 {
 	struct stat st;
-
 	if (fstat(h, &st) < 0)
-		return (-1);
-
-	return (st.st_size);
+		return -1;
+	return st.st_size;
 }
 
 static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo)
