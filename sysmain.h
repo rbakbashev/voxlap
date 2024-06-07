@@ -10,6 +10,8 @@ You may use this code for non-commercial purposes as long as credit is maintaine
 #ifndef KEN_SYSMAIN_H
 #define KEN_SYSMAIN_H
 
+#include <stdint.h>
+
 	//System specific:
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -49,7 +51,7 @@ typedef struct { long x, y; char c, r0, g0, b0, a0, rn, gn, bn, an; } validmodet
 extern validmodetype curvidmodeinfo;
 extern long xres, yres, colbits, fullscreen, maxpages;
 extern PALETTEENTRY pal[256];
-extern long startdirectdraw (long *, long *, long *, long *);
+extern long startdirectdraw (uint32_t **, int *, int *, int *);
 extern void stopdirectdraw ();
 extern void nextpage ();
 extern long clearscreen (long fillcolor);

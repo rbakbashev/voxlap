@@ -44,8 +44,6 @@ PALETTEENTRY pal[256];
 static SDL_Window *screen = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *texture = NULL;
-static Uint32 *pixels = NULL;
-static int pitch = 0;
 static int surflocked = 0;
 
 long getvalidmodelist (validmodetype **davalidmodelist)
@@ -64,13 +62,12 @@ void stopdirectdraw()
 	surflocked = 0;
 }
 
-long startdirectdraw(long *vidplc, long *dabpl, long *daxres, long *dayres)
+long startdirectdraw(uint32_t **pixels, int *pitch, int *daxres, int *dayres)
 {
 	if (surflocked) stopdirectdraw();
 
-	if (SDL_LockTexture(texture, 0, (void**)&pixels, &pitch) < 0) return 0;
-	
-	*vidplc = (long)pixels; *dabpl = pitch;
+	if (SDL_LockTexture(texture, 0, (void**)pixels, pitch) < 0) return 0;
+
 	*daxres = xres; *dayres = yres; surflocked = 1;
 	return 1;
 }

@@ -72,7 +72,7 @@ static long* vbuf = 0;
 static cftype cf[256];
 
 // Screen related variables:
-static long pixels, pitch;
+static uint32_t* pixels;
 
 static lpoint3d glipos;
 static point3d gipos, gistr, gihei, gifor;
@@ -467,51 +467,39 @@ static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
 		);
 }
 
-static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
+static void hrendz(long sx, long sy, long x_end, long plc, long incr, long j)
 {
-	float* zb;
-	long p0;
-	float dirx, diry;
-
-	zb = zbuffermem + sy * pitch / 4 + sx;
-
-	p0 = pixels + sy * pitch + (sx << 2);
-	p1 = pixels + sy * pitch + (p1 << 2);
-
-	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
-	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
+	float* zb    = zbuffermem + sy * xres + sx;
+	uint32_t* p0 = pixels + sy * xres + sx;
+	uint32_t* p1 = pixels + sy * xres + x_end;
+	float dirx   = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
+	float diry   = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
 
 	do {
-		*(long*)p0 = angstart[plc >> 16][j].col;
+		*p0 = angstart[plc >> 16][j].col;
 		*zb = angstart[plc >> 16][j].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		plc += incr;
-		p0 += 4;
+		p0++;
 	} while (p0 != p1);
 }
 
-static void vrendz(long sx, long sy, long p1, long iplc, long iinc)
+static void vrendz(long sx, long sy, long x_end, long iplc, long iinc)
 {
-	float* zb;
-	long p0;
-	float dirx, diry;
-
-	zb = zbuffermem + sy * pitch / 4 + sx;
-
-	p0 = pixels + sy * pitch + (sx << 2);
-	p1 = pixels + sy * pitch + (p1 << 2);
-
-	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
-	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
+	float* zb    = zbuffermem + sy * xres + sx;
+	uint32_t* p0 = pixels + sy * xres + sx;
+	uint32_t* p1 = pixels + sy * xres + x_end;
+	float dirx   = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
+	float diry   = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
 
 	while (p0 < p1) {
-		*(long*)p0 = angstart[uurend[sx] >> 16][iplc].col;
+		*p0 = angstart[uurend[sx] >> 16][iplc].col;
 		*zb = angstart[uurend[sx] >> 16][iplc].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		uurend[sx] += uurend[sx + MAXXDIM];
-		p0 += 4;
+		p0++;
 		iplc += iinc;
 		sx++;
 	}
@@ -1038,7 +1026,7 @@ static void dorthorotate(double ox, double oy, double oz, dpoint3d* ist, dpoint3
 
 //----------------------------------------------------------------------------
 
-static void voxsetframebuffer(long _pixels, long _pitch, long x, long y)
+static void voxsetframebuffer(uint32_t* _pixels, int pitch, int x, int y)
 {
 	pixels = _pixels;
 
@@ -1046,25 +1034,24 @@ static void voxsetframebuffer(long _pixels, long _pitch, long x, long y)
 	x = min(x, MAXXDIM);
 	y = min(y, MAXYDIM);
 
-	if (_pitch != pitch || x != xres || y != yres) {
+	if (x != xres || y != yres) {
 		xres = x;
 		yres = y;
-		pitch = _pitch;
-
-		// Increase Z buffer size if too small
-		size_t newzbufsiz = pitch * yres;
-		if (newzbufsiz > zbuffersiz || zbuffermem == 0) {
-			if (zbuffermem)
-				free(zbuffermem);
-
-			zbuffersiz = newzbufsiz;
-
-			if (!(zbuffermem = malloc(zbuffersiz)))
-				evilquit("voxsetframebuffer: allocation too big");
-		}
 	}
 
-	uurend = &uurendmem[((pixels & 4) ^ (((long)uurendmem) & 4)) >> 2];
+	// Increase Z buffer size if too small
+	size_t newzbufsiz = pitch * yres;
+	if (newzbufsiz > zbuffersiz || zbuffermem == 0) {
+		if (zbuffermem)
+			free(zbuffermem);
+
+		zbuffersiz = newzbufsiz;
+
+		if (!(zbuffermem = malloc(zbuffersiz)))
+			evilquit("voxsetframebuffer: allocation too big");
+	}
+
+	uurend = &uurendmem[(((long)pixels & 4) ^ (((long)uurendmem) & 4)) >> 2];
 }
 
 static long initmap()
@@ -1139,7 +1126,7 @@ void doframe()
 {
 	dpoint3d dp;
 	float f, fmousx, fmousy;
-	long pixels, pitch, screen_w, screen_h;
+	int pitch, screen_w, screen_h;
 
 	if (startdirectdraw(&pixels, &pitch, &screen_w, &screen_h)) {
 		voxsetframebuffer(pixels, pitch, screen_w, screen_h);
