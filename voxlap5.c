@@ -61,8 +61,7 @@ typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
 static cftype cf[256];
 
 // Screen related variables:
-static long frameplace;
-static long ylookup[MAXYDIM + 1];
+static long pixels, pitch;
 
 static lpoint3d glipos;
 static point3d gipos, gistr, gihei, gifor;
@@ -464,8 +463,8 @@ static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
 {
 	long p0, i;
 	float dirx, diry;
-	p0 = ylookup[sy] + (sx << 2) + frameplace;
-	p1 = ylookup[sy] + (p1 << 2) + frameplace;
+	p0 = pixels + sy * pitch + (sx << 2);
+	p1 = pixels + sy * pitch + (p1 << 2);
 	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
 	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
 	i = zbufoff;
@@ -483,8 +482,8 @@ static void vrendz(long sx, long sy, long p1, long iplc, long iinc)
 {
 	float dirx, diry;
 	long i, p0;
-	p0 = ylookup[sy] + (sx << 2) + frameplace;
-	p1 = ylookup[sy] + (p1 << 2) + frameplace;
+	p0 = pixels + sy * pitch + (sx << 2);
+	p1 = pixels + sy * pitch + (p1 << 2);
 	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
 	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
 	i = zbufoff;
@@ -1034,30 +1033,26 @@ static void dorthorotate(double ox, double oy, double oz, dpoint3d* ist, dpoint3
 
 //----------------------------------------------------------------------------
 
-static void voxsetframebuffer(long pixels, long pitch, long x, long y)
+static void voxsetframebuffer(long _pixels, long _pitch, long x, long y)
 {
-	frameplace = pixels;
+	pixels = _pixels;
 
-	if (x > MAXXDIM)
-		x = MAXXDIM; // This sucks, but it crashes without it
-	if (y > MAXYDIM)
-		y = MAXYDIM;
+	// This sucks, but it crashes without it
+	x = min(x, MAXXDIM);
+	y = min(y, MAXYDIM);
 
-	if (ylookup[1] != pitch || x != xres || y != yres) {
+	if (_pitch != pitch || x != xres || y != yres) {
 		xres = x;
 		yres = y;
+		pitch = _pitch;
 
-		for (long i = 0; i < yres + 1; i++)
-			ylookup[i] = pitch * i;
-
-		// gihx = gihz = (float)xres*.5f; gihy = (float)yres*.5f; //BAD!!!
-		if (ylookup[yres] + 256 > zbuffersiz || zbuffermem == 0) // Increase Z buffer size if too small
-		{
+		// Increase Z buffer size if too small
+		if (pitch * yres + 256 > zbuffersiz || zbuffermem == 0) {
 			if (zbuffermem) {
 				free(zbuffermem);
 				zbuffermem = 0;
 			}
-			zbuffersiz = ylookup[yres] + 256;
+			zbuffersiz = pitch * yres + 256;
 			if (!(zbuffermem = malloc(zbuffersiz)))
 				evilquit("voxsetframebuffer: allocation too big");
 		}
@@ -1065,8 +1060,9 @@ static void voxsetframebuffer(long pixels, long pitch, long x, long y)
 
 	// zbuffer aligns its memory to the same pixel boundaries as the screen!
 	// WARNING: Pentium 4's L2 cache has severe slowdowns when 65536-64 <= (zbufoff&65535) < 64
-	zbufoff = (((((long)zbuffermem) - frameplace - 128) + 255) & ~255) + 128;
-	uurend = &uurendmem[((frameplace & 4) ^ (((long)uurendmem) & 4)) >> 2];
+	zbufoff = (((((long)zbuffermem) - pixels - 128) + 255) & ~255) + 128;
+
+	uurend = &uurendmem[((pixels & 4) ^ (((long)uurendmem) & 4)) >> 2];
 }
 
 // ----- GAME.C code begins
