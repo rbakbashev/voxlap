@@ -99,7 +99,6 @@ static long gylookup[512 + 36]; // 256+4+128+4+64+4+...
 static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
-static long zbufoff;
 static long gi0;
 static long gi1;
 
@@ -469,16 +468,16 @@ static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
 
 static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
 {
-	long p0, i;
+	long z0, p0;
 	float dirx, diry;
+	z0 = (long)zbuffermem + sy * pitch + (sx << 2);
 	p0 = pixels + sy * pitch + (sx << 2);
 	p1 = pixels + sy * pitch + (p1 << 2);
 	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
 	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
-	i = zbufoff;
 	do {
 		*(long*)p0 = angstart[plc >> 16][j].col;
-		*(float*)(p0 + i) = (float)angstart[plc >> 16][j].dist / sqrt(dirx * dirx + diry * diry);
+		*(float*)z0 = (float)angstart[plc >> 16][j].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		plc += incr;
@@ -488,16 +487,16 @@ static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
 
 static void vrendz(long sx, long sy, long p1, long iplc, long iinc)
 {
+	long z0, p0;
 	float dirx, diry;
-	long i, p0;
+	z0 = (long)zbuffermem + sy * pitch + (sx << 2);
 	p0 = pixels + sy * pitch + (sx << 2);
 	p1 = pixels + sy * pitch + (p1 << 2);
 	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
 	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
-	i = zbufoff;
 	while (p0 < p1) {
 		*(long*)p0 = angstart[uurend[sx] >> 16][iplc].col;
-		*(float*)(p0 + i) = (float)angstart[uurend[sx] >> 16][iplc].dist / sqrt(dirx * dirx + diry * diry);
+		*(float*)z0 = (float)angstart[uurend[sx] >> 16][iplc].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		uurend[sx] += uurend[sx + MAXXDIM];
@@ -1042,20 +1041,17 @@ static void voxsetframebuffer(long _pixels, long _pitch, long x, long y)
 		pitch = _pitch;
 
 		// Increase Z buffer size if too small
-		if (pitch * yres + 256 > zbuffersiz || zbuffermem == 0) {
-			if (zbuffermem) {
+		long newzbufsiz = pitch * yres;
+		if (newzbufsiz > zbuffersiz || zbuffermem == 0) {
+			if (zbuffermem)
 				free(zbuffermem);
-				zbuffermem = 0;
-			}
-			zbuffersiz = pitch * yres + 256;
+
+			zbuffersiz = newzbufsiz;
+
 			if (!(zbuffermem = malloc(zbuffersiz)))
 				evilquit("voxsetframebuffer: allocation too big");
 		}
 	}
-
-	// zbuffer aligns its memory to the same pixel boundaries as the screen!
-	// WARNING: Pentium 4's L2 cache has severe slowdowns when 65536-64 <= (zbufoff&65535) < 64
-	zbufoff = (((((long)zbuffermem) - pixels - 128) + 255) & ~255) + 128;
 
 	uurend = &uurendmem[((pixels & 4) ^ (((long)uurendmem) & 4)) >> 2];
 }
