@@ -22,19 +22,33 @@
 #define VSID 1024 // Maximum .VXL dimensions in both x & y direction
 #define MAXZDIM 256 // Maximum .VXL dimensions in z direction (height)
 
+#define PREC (256 * 4096)
+#define CMPPREC (256 * 4096)
+
+#define VOXSIZ VSID * VSID * 128
+
+#define SCPITCH 256
+#define CMPRECIPSIZ MAXXDIM + 32
+
 typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 typedef struct { double x, y, z; } dpoint3d;
 
-#define PREC (256 * 4096)
-#define CMPPREC (256 * 4096)
+typedef struct { long col, dist; } castdat;
+typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
+
+// Player position variables:
+static dpoint3d ipos, istr, ihei, ifor;
+
+// Timer global variables:
+static double curtime;
+static float dt;
 
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 
 // Opticast variables:
-long anginc, maxscandist;
+static long anginc, maxscandist;
 
-#define VOXSIZ VSID * VSID * 128
 static char* sptr[(VSID * VSID * 4) / 3];
 static long* vbuf = 0;
 
@@ -55,9 +69,6 @@ static long* vbuf = 0;
 //       z0: z ceiling (bottom of ceiling color list)
 
 // Rendering variables:
-typedef struct { long col, dist; } castdat;
-typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
-
 static cftype cf[256];
 
 // Screen related variables:
@@ -77,11 +88,9 @@ static long p2c[32], p2m[32]; // bbuf: 2.0K
 // radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
 // radar: 400x300 requires  751836*2 bytes (area * 6.27*2)
 // radar: 640x480 requires 1917568*2 bytes (area * 6.24*2)
-#define SCPITCH 256
 static long *radar = 0, *radarmem = 0;
 static long *zbuffermem = 0, zbuffersiz = 0;
 static castdat *angstart[MAXXDIM * 4], *gscanptr;
-#define CMPRECIPSIZ MAXXDIM + 32
 static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
 static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
@@ -1064,15 +1073,6 @@ static void voxsetframebuffer(long _pixels, long _pitch, long x, long y)
 
 	uurend = &uurendmem[((pixels & 4) ^ (((long)uurendmem) & 4)) >> 2];
 }
-
-// ----- GAME.C code begins
-
-// Player position variables:
-static dpoint3d ipos, istr, ihei, ifor;
-
-// Timer global variables:
-static double curtime;
-static float dt;
 
 static long initmap()
 {
