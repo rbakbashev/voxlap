@@ -34,7 +34,7 @@ typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 typedef struct { double x, y, z; } dpoint3d;
 
-typedef struct { long col, dist; } castdat;
+typedef struct { uint32_t col; float dist; } castdat;
 typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
 
 // Player position variables:
@@ -88,7 +88,8 @@ static long p2c[32], p2m[32]; // bbuf: 2.0K
 // radar: 400x300 requires  751836*2 bytes (area * 6.27*2)
 // radar: 640x480 requires 1917568*2 bytes (area * 6.24*2)
 static long *radar = 0, *radarmem = 0;
-static long *zbuffermem = 0, zbuffersiz = 0;
+static float* zbuffermem;
+static size_t zbuffersiz;
 static castdat *angstart[MAXXDIM * 4], *gscanptr;
 static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
 static long iwx0, iwy0, iwx1, iwy1;
@@ -468,16 +469,21 @@ static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
 
 static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
 {
-	long z0, p0;
+	float* zb;
+	long p0;
 	float dirx, diry;
-	z0 = (long)zbuffermem + sy * pitch + (sx << 2);
+
+	zb = zbuffermem + sy * pitch / 4 + sx;
+
 	p0 = pixels + sy * pitch + (sx << 2);
 	p1 = pixels + sy * pitch + (p1 << 2);
+
 	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
 	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
+
 	do {
 		*(long*)p0 = angstart[plc >> 16][j].col;
-		*(float*)z0 = (float)angstart[plc >> 16][j].dist / sqrt(dirx * dirx + diry * diry);
+		*zb = angstart[plc >> 16][j].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		plc += incr;
@@ -487,16 +493,21 @@ static void hrendz(long sx, long sy, long p1, long plc, long incr, long j)
 
 static void vrendz(long sx, long sy, long p1, long iplc, long iinc)
 {
-	long z0, p0;
+	float* zb;
+	long p0;
 	float dirx, diry;
-	z0 = (long)zbuffermem + sy * pitch + (sx << 2);
+
+	zb = zbuffermem + sy * pitch / 4 + sx;
+
 	p0 = pixels + sy * pitch + (sx << 2);
 	p1 = pixels + sy * pitch + (p1 << 2);
+
 	dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
 	diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
+
 	while (p0 < p1) {
 		*(long*)p0 = angstart[uurend[sx] >> 16][iplc].col;
-		*(float*)z0 = (float)angstart[uurend[sx] >> 16][iplc].dist / sqrt(dirx * dirx + diry * diry);
+		*zb = angstart[uurend[sx] >> 16][iplc].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		uurend[sx] += uurend[sx + MAXXDIM];
@@ -1041,7 +1052,7 @@ static void voxsetframebuffer(long _pixels, long _pitch, long x, long y)
 		pitch = _pitch;
 
 		// Increase Z buffer size if too small
-		long newzbufsiz = pitch * yres;
+		size_t newzbufsiz = pitch * yres;
 		if (newzbufsiz > zbuffersiz || zbuffermem == 0) {
 			if (zbuffermem)
 				free(zbuffermem);
