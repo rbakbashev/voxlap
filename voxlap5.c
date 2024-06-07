@@ -26,17 +26,6 @@ typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 typedef struct { double x, y, z; } dpoint3d;
 
-// File related functions:
-static long loadvxl(const char*, dpoint3d*, dpoint3d*, dpoint3d*, dpoint3d*);
-
-// Screen related functions:
-static void voxsetframebuffer(long, long, long, long);
-static void setcamera(dpoint3d*, dpoint3d*, dpoint3d*, dpoint3d*, float, float, float);
-static void opticast();
-
-// Physics helper functions:
-static void dorthorotate(double, double, double, dpoint3d*, dpoint3d*, dpoint3d*);
-
 #define PREC (256 * 4096)
 #define CMPPREC (256 * 4096)
 
@@ -72,7 +61,7 @@ typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
 static cftype cf[256];
 
 // Screen related variables:
-static long bytesperline, frameplace, xres4;
+static long frameplace;
 static long ylookup[MAXYDIM + 1];
 
 static lpoint3d glipos;
@@ -1045,36 +1034,35 @@ static void dorthorotate(double ox, double oy, double oz, dpoint3d* ist, dpoint3
 
 //----------------------------------------------------------------------------
 
-static void voxsetframebuffer(long p, long b, long x, long y)
+static void voxsetframebuffer(long pixels, long pitch, long x, long y)
 {
-	long i;
+	frameplace = pixels;
 
-	frameplace = p;
 	if (x > MAXXDIM)
 		x = MAXXDIM; // This sucks, but it crashes without it
 	if (y > MAXYDIM)
 		y = MAXYDIM;
 
-	if ((b != ylookup[1]) || (x != xres) || (y != yres)) {
-		bytesperline = b;
+	if (ylookup[1] != pitch || x != xres || y != yres) {
 		xres = x;
 		yres = y;
-		xres4 = (xres << 2);
-		ylookup[0] = 0;
-		for (i = 0; i < yres; i++)
-			ylookup[i + 1] = ylookup[i] + bytesperline;
+
+		for (long i = 0; i < yres + 1; i++)
+			ylookup[i] = pitch * i;
+
 		// gihx = gihz = (float)xres*.5f; gihy = (float)yres*.5f; //BAD!!!
-		if ((ylookup[yres] + 256 > zbuffersiz) || (!zbuffermem)) // Increase Z buffer size if too small
+		if (ylookup[yres] + 256 > zbuffersiz || zbuffermem == 0) // Increase Z buffer size if too small
 		{
 			if (zbuffermem) {
 				free(zbuffermem);
 				zbuffermem = 0;
 			}
 			zbuffersiz = ylookup[yres] + 256;
-			if (!(zbuffermem = (long*)malloc(zbuffersiz)))
+			if (!(zbuffermem = malloc(zbuffersiz)))
 				evilquit("voxsetframebuffer: allocation too big");
 		}
 	}
+
 	// zbuffer aligns its memory to the same pixel boundaries as the screen!
 	// WARNING: Pentium 4's L2 cache has severe slowdowns when 65536-64 <= (zbufoff&65535) < 64
 	zbufoff = (((((long)zbuffermem) - frameplace - 128) + 255) & ~255) + 128;
@@ -1162,10 +1150,10 @@ void doframe()
 {
 	dpoint3d dp;
 	float f, fmousx, fmousy;
-	long i, j, k, l;
+	long pixels, pitch, screen_w, screen_h;
 
-	if (startdirectdraw(&i, &j, &k, &l)) {
-		voxsetframebuffer(i, j, k, l);
+	if (startdirectdraw(&pixels, &pitch, &screen_w, &screen_h)) {
+		voxsetframebuffer(pixels, pitch, screen_w, screen_h);
 		setcamera(&ipos, &istr, &ihei, &ifor, xres * .5, yres * .5, xres * .5);
 		opticast();
 
