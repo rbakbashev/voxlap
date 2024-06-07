@@ -76,7 +76,6 @@ static long pixels, pitch;
 
 static lpoint3d glipos;
 static point3d gipos, gistr, gihei, gifor;
-static point3d gixs, giys, gizs, giadd;
 static float gihx, gihy, gihz, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char* gstartv;
@@ -526,19 +525,6 @@ static void setcamera(dpoint3d* ipo, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo
 	gihx = dahx;
 	gihy = dahy;
 	gihz = dahz;
-
-	gixs.x = gistr.x;
-	gixs.y = gihei.x;
-	gixs.z = gifor.x;
-	giys.x = gistr.y;
-	giys.y = gihei.y;
-	giys.z = gifor.y;
-	gizs.x = gistr.z;
-	gizs.y = gihei.z;
-	gizs.z = gifor.z;
-	giadd.x = -(gipos.x * gistr.x + gipos.y * gistr.y + gipos.z * gistr.z);
-	giadd.y = -(gipos.x * gihei.x + gipos.y * gihei.y + gipos.z * gihei.z);
-	giadd.z = -(gipos.x * gifor.x + gipos.y * gifor.y + gipos.z * gifor.z);
 
 	gcorn[0].x = -gihx * gistr.x - gihy * gihei.x + gihz * gifor.x;
 	gcorn[0].y = -gihx * gistr.y - gihy * gihei.y + gihz * gifor.y;
