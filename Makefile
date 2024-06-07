@@ -10,7 +10,7 @@ voxlap: voxlap5.c sdlmain.c
 		-O3 \
 		-Wno-misleading-indentation -Wno-char-subscripts \
 		-funsigned-char
-	./$@
+	-./$@
 
 clean:
 	rm -f voxlap
