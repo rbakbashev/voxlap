@@ -94,7 +94,7 @@ static castdat *angstart[MAXXDIM * 4], *gscanptr;
 static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
 static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
-static long lastx[max(MAXYDIM, VSID)], uurendmem[MAXXDIM * 2 + 8], *uurend;
+static long lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
 static long gylookup[512 + 36]; // 256+4+128+4+64+4+...
 static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
@@ -1050,8 +1050,6 @@ static void voxsetframebuffer(uint32_t* _pixels, int pitch, int x, int y)
 		if (!(zbuffermem = malloc(zbuffersiz)))
 			evilquit("voxsetframebuffer: allocation too big");
 	}
-
-	uurend = &uurendmem[(((long)pixels & 4) ^ (((long)uurendmem) & 4)) >> 2];
 }
 
 static long initmap()
