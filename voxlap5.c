@@ -28,7 +28,6 @@
 #define VOXSIZ VSID * VSID * 128
 
 #define SCPITCH 256
-#define CMPRECIPSIZ MAXXDIM + 32
 
 typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
@@ -42,7 +41,7 @@ static dpoint3d ipos, istr, ihei, ifor;
 
 // Timer global variables:
 static double curtime;
-static float dt;
+static float dt = 1.f;
 
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 
@@ -91,7 +90,7 @@ static long *radar = 0, *radarmem = 0;
 static float* zbuffermem;
 static size_t zbuffersiz;
 static castdat *angstart[MAXXDIM * 4], *gscanptr;
-static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
+static float wx0, wy0, wx1, wy1;
 static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
@@ -225,14 +224,14 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	c->z0 = gstartz0;
 	c->z1 = gstartz1;
 	if (giforzsgn < 0) {
-		ftol((vd1 - vd0) * cmprecip[leng], &gi0);
+		ftol((vd1 - vd0) * CMPPREC / leng, &gi0);
 		ftol(vd0 * CMPPREC, &c->cx0);
-		ftol((vz1 - vz0) * cmprecip[leng], &gi1);
+		ftol((vz1 - vz0) * CMPPREC / leng, &gi1);
 		ftol(vz0 * CMPPREC, &c->cy0);
 	} else {
-		ftol((vd0 - vd1) * cmprecip[leng], &gi0);
+		ftol((vd0 - vd1) * CMPPREC / leng, &gi0);
 		ftol(vd1 * CMPPREC, &c->cx0);
-		ftol((vz0 - vz1) * cmprecip[leng], &gi1);
+		ftol((vz0 - vz1) * CMPPREC / leng, &gi1);
 		ftol(vz1 * CMPPREC, &c->cy0);
 	}
 	c->cx1 = leng * gi0 + c->cx0;
@@ -973,8 +972,8 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3
 	for (i = 0; i < VSID * VSID; i++) {
 		sptr[i] = v;
 		while (v[0])
-			v += (((long)v[0]) << 2);
-		v += ((((long)v[2]) - ((long)v[1]) + 2) << 2);
+			v += (long)v[0] << 2;
+		v += ((long)v[2] - (long)v[1] + 2) << 2;
 	}
 
 	fclose(fil);
@@ -1074,14 +1073,13 @@ long initapp(long argc, char** argv)
 	colbits = 32;
 	fullscreen = 0;
 
-	// WARNING: xres&yres are local to VOXLAP5.C so don't rely on them here!
-	if (!(radarmem = (long*)malloc(max((((MAXXDIM * MAXYDIM * 27) >> 1) + 7) & ~7, (VSID + 4) * 3 * SCPITCH * 4 + 8))))
+	size_t radarmemsz = max(
+			(((MAXXDIM * MAXYDIM * 27) >> 1) + 7) & ~7,
+			(VSID + 4) * 3 * SCPITCH * 4 + 8
+		);
+	if (!(radarmem = malloc(radarmemsz)))
 		return (-1);
 	radar = (long*)((((long)radarmem) + 7) & ~7);
-
-	// Lookup table to save 1 divide for gline()
-	for (long i = 1; i < CMPRECIPSIZ; i++)
-		cmprecip[i] = CMPPREC / (float)i;
 
 	for (long z = 0; z < 32; z++) {
 		p2c[z] = (1 << z);
@@ -1096,8 +1094,6 @@ long initapp(long argc, char** argv)
 
 	// Init klock
 	readklock(&curtime);
-
-	dt = 1.f;
 
 	return 0;
 }
