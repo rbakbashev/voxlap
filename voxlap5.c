@@ -72,7 +72,7 @@ static cftype cf[256];
 // Screen related variables:
 static uint32_t* pixels;
 
-static lpoint3d glipos;
+static lpoint3d iposl;
 static float gihx, gihy, gihz, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char* gstartv;
@@ -239,17 +239,17 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 
 	// Clip borders safely (MUST use integers!) - don't wrap around
 	if (gixy[0] < 0)
-		j = glipos.x;
+		j = iposl.x;
 	else
-		j = VSID - 1 - glipos.x;
+		j = VSID - 1 - iposl.x;
 	q = mul64(gdz[0], j);
 	q += (uint64_t)gpz[0];
 	if (q < (uint64_t)gxmax)
 		gxmax = (long)q;
 	if (gixy[1] < 0)
-		j = glipos.y;
+		j = iposl.y;
 	else
-		j = VSID - 1 - glipos.y;
+		j = VSID - 1 - iposl.y;
 	q = mul64(gdz[1], j);
 	q += (uint64_t)gpz[1];
 	if (q < (uint64_t)gxmax)
@@ -775,27 +775,27 @@ static void opticast()
 
 	gixyi[0] = (VSID << 2);
 	gixyi[1] = -gixyi[0];
-	glipos.x = (long)ipos.x;
-	glipos.y = (long)ipos.y;
-	glipos.z = (long)ipos.z;
-	gpixy = (long)&sptr[glipos.y * VSID + glipos.x];
+	iposl.x = (long)ipos.x;
+	iposl.y = (long)ipos.y;
+	iposl.z = (long)ipos.z;
+	gpixy = (long)&sptr[iposl.y * VSID + iposl.x];
 	ftol(ipos.z * PREC - .5f, &gposz);
-	gposxfrac[1] = ipos.x - (float)glipos.x;
+	gposxfrac[1] = ipos.x - (float)iposl.x;
 	gposxfrac[0] = 1 - gposxfrac[1];
-	gposyfrac[1] = ipos.y - (float)glipos.y;
+	gposyfrac[1] = ipos.y - (float)iposl.y;
 	gposyfrac[0] = 1 - gposyfrac[1];
 	for (i = 0; i < 256 + 4; i++)
 		gylookup[i] = (i * PREC - gposz);
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
 
 	gstartv = (char*)*(long*)gpixy;
-	if (glipos.z >= gstartv[1]) {
+	if (iposl.z >= gstartv[1]) {
 		do {
 			if (!gstartv[0])
 				return;
 			gstartv += gstartv[0] * 4;
-		} while (glipos.z >= gstartv[1]);
-		if (glipos.z < gstartv[3])
+		} while (iposl.z >= gstartv[1]);
+		if (iposl.z < gstartv[3])
 			return;
 		gstartz0 = gstartv[3];
 	} else
