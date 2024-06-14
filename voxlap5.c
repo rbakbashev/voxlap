@@ -31,13 +31,12 @@
 
 typedef struct { long x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
-typedef struct { double x, y, z; } dpoint3d;
 
 typedef struct { uint32_t col; float dist; } castdat;
 typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
 
 // Player position variables:
-static dpoint3d ipos, istr, ihei, ifor;
+static point3d ipos, istr, ihei, ifor;
 
 // Timer global variables:
 static double curtime;
@@ -74,7 +73,6 @@ static cftype cf[256];
 static uint32_t* pixels;
 
 static lpoint3d glipos;
-static point3d gipos, gistr, gihei, gifor;
 static float gihx, gihy, gihz, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char* gstartv;
@@ -179,12 +177,12 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	cftype *c2, *ce;
 	char* v;
 
-	vd0 = x0 * gistr.x + y0 * gihei.x + gcorn[0].x;
-	vd1 = x0 * gistr.y + y0 * gihei.y + gcorn[0].y;
-	vz0 = x0 * gistr.z + y0 * gihei.z + gcorn[0].z;
-	vx1 = x1 * gistr.x + y1 * gihei.x + gcorn[0].x;
-	vy1 = x1 * gistr.y + y1 * gihei.y + gcorn[0].y;
-	vz1 = x1 * gistr.z + y1 * gihei.z + gcorn[0].z;
+	vd0 = x0 * istr.x + y0 * ihei.x + gcorn[0].x;
+	vd1 = x0 * istr.y + y0 * ihei.y + gcorn[0].y;
+	vz0 = x0 * istr.z + y0 * ihei.z + gcorn[0].z;
+	vx1 = x1 * istr.x + y1 * ihei.x + gcorn[0].x;
+	vy1 = x1 * istr.y + y1 * ihei.y + gcorn[0].y;
+	vz1 = x1 * istr.z + y1 * ihei.z + gcorn[0].z;
 
 	f = sqrt(vx1 * vx1 + vy1 * vy1);
 	f1 = f / vx1;
@@ -504,37 +502,25 @@ static void vrendz(long sx, long sy, long x_end, long iplc, long iinc)
 	}
 }
 
-static void setcamera(dpoint3d* ipos, dpoint3d* istr, dpoint3d* ihei, dpoint3d* ifor,
+static void setcamera(point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor,
 	float dahx, float dahy, float dahz)
 {
-	gipos.x = ipos->x;
-	gipos.y = ipos->y;
-	gipos.z = ipos->z;
-	gistr.x = istr->x;
-	gistr.y = istr->y;
-	gistr.z = istr->z;
-	gihei.x = ihei->x;
-	gihei.y = ihei->y;
-	gihei.z = ihei->z;
-	gifor.x = ifor->x;
-	gifor.y = ifor->y;
-	gifor.z = ifor->z;
 	gihx = dahx;
 	gihy = dahy;
 	gihz = dahz;
 
-	gcorn[0].x = -gihx * gistr.x - gihy * gihei.x + gihz * gifor.x;
-	gcorn[0].y = -gihx * gistr.y - gihy * gihei.y + gihz * gifor.y;
-	gcorn[0].z = -gihx * gistr.z - gihy * gihei.z + gihz * gifor.z;
-	gcorn[1].x = xres * gistr.x + gcorn[0].x;
-	gcorn[1].y = xres * gistr.y + gcorn[0].y;
-	gcorn[1].z = xres * gistr.z + gcorn[0].z;
-	gcorn[2].x = yres * gihei.x + gcorn[1].x;
-	gcorn[2].y = yres * gihei.y + gcorn[1].y;
-	gcorn[2].z = yres * gihei.z + gcorn[1].z;
-	gcorn[3].x = yres * gihei.x + gcorn[0].x;
-	gcorn[3].y = yres * gihei.y + gcorn[0].y;
-	gcorn[3].z = yres * gihei.z + gcorn[0].z;
+	gcorn[0].x = -gihx * istr->x - gihy * ihei->x + gihz * ifor->x;
+	gcorn[0].y = -gihx * istr->y - gihy * ihei->y + gihz * ifor->y;
+	gcorn[0].z = -gihx * istr->z - gihy * ihei->z + gihz * ifor->z;
+	gcorn[1].x =  xres * istr->x + gcorn[0].x;
+	gcorn[1].y =  xres * istr->y + gcorn[0].y;
+	gcorn[1].z =  xres * istr->z + gcorn[0].z;
+	gcorn[2].x =  yres * ihei->x + gcorn[1].x;
+	gcorn[2].y =  yres * ihei->y + gcorn[1].y;
+	gcorn[2].z =  yres * ihei->z + gcorn[1].z;
+	gcorn[3].x =  yres * ihei->x + gcorn[0].x;
+	gcorn[3].y =  yres * ihei->y + gcorn[0].y;
+	gcorn[3].z =  yres * ihei->z + gcorn[0].z;
 }
 
 static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16, float cy16)
@@ -782,21 +768,21 @@ static void opticast()
 	float f, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
 	long i, cx16, cy16;
 
-	if (gifor.z < 0)
+	if (ifor.z < 0)
 		giforzsgn = -1;
 	else
-		giforzsgn = 1; // giforzsgn = (gifor.z < 0);
+		giforzsgn = 1; // giforzsgn = (ifor.z < 0);
 
 	gixyi[0] = (VSID << 2);
 	gixyi[1] = -gixyi[0];
-	glipos.x = ((long)gipos.x);
-	glipos.y = ((long)gipos.y);
-	glipos.z = ((long)gipos.z);
+	glipos.x = (long)ipos.x;
+	glipos.y = (long)ipos.y;
+	glipos.z = (long)ipos.z;
 	gpixy = (long)&sptr[glipos.y * VSID + glipos.x];
-	ftol(gipos.z * PREC - .5f, &gposz);
-	gposxfrac[1] = gipos.x - (float)glipos.x;
+	ftol(ipos.z * PREC - .5f, &gposz);
+	gposxfrac[1] = ipos.x - (float)glipos.x;
 	gposxfrac[0] = 1 - gposxfrac[1];
-	gposyfrac[1] = gipos.y - (float)glipos.y;
+	gposyfrac[1] = ipos.y - (float)glipos.y;
 	gposyfrac[0] = 1 - gposyfrac[1];
 	for (i = 0; i < 256 + 4; i++)
 		gylookup[i] = (i * PREC - gposz);
@@ -816,13 +802,13 @@ static void opticast()
 		gstartz0 = 0;
 	gstartz1 = gstartv[1];
 
-	if (gifor.z == 0)
+	if (ifor.z == 0)
 		f = 32000;
 	else
-		f = gihz / gifor.z;
+		f = gihz / ifor.z;
 	f = min(max(f, -32000), 32000);
-	cx = gistr.z * f + gihx;
-	cy = gihei.z * f + gihy;
+	cx = istr.z * f + gihx;
+	cy = ihei.z * f + gihy;
 
 	wx0 = (float)(-(anginc));
 	wx1 = (float)(xres - 1 + (anginc));
@@ -900,11 +886,11 @@ static void opticast()
 	y3 += .01;
 
 	f = (float)PREC / gihz;
-	optistrx = gistr.x * f;
-	optiheix = gihei.x * f;
+	optistrx = istr.x * f;
+	optiheix = ihei.x * f;
 	optiaddx = gcorn[0].x * f;
-	optistry = gistr.y * f;
-	optiheiy = gihei.y * f;
+	optistry = istr.y * f;
+	optiheiy = ihei.y * f;
 	optiaddy = gcorn[0].y * f;
 
 	ftol(cx * 65536, &cx16);
@@ -924,11 +910,12 @@ static inline int filelength(int h)
 	return st.st_size;
 }
 
-static long loadvxl(const char* lodfilnam, dpoint3d* ipos, dpoint3d* istr, dpoint3d* ihei, dpoint3d* ifor)
+static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor)
 {
 	FILE* fil;
 	long i, fsiz;
 	char* v;
+	double posd[3], strd[3], heid[3], ford[3];
 
 	if (!vbuf) {
 		vbuf = (long*)malloc((VOXSIZ >> 2) << 2);
@@ -960,11 +947,24 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipos, dpoint3d* istr, dpoin
 	if (i != VSID)
 		return (0);
 
-	fread(ipos, 24, 1, fil);
-	fread(istr, 24, 1, fil);
-	fread(ihei, 24, 1, fil);
-	fread(ifor, 24, 1, fil);
+	fread(posd, 24, 1, fil);
+	fread(strd, 24, 1, fil);
+	fread(heid, 24, 1, fil);
+	fread(ford, 24, 1, fil);
 	pos += 24 * 4;
+
+	ipos->x = posd[0];
+	ipos->y = posd[1];
+	ipos->z = posd[2];
+	istr->x = strd[0];
+	istr->y = strd[1];
+	istr->z = strd[2];
+	ihei->x = heid[0];
+	ihei->y = heid[1];
+	ihei->z = heid[2];
+	ifor->x = ford[0];
+	ifor->y = ford[1];
+	ifor->z = ford[2];
 
 	v = (char*)vbuf;
 	fread(v, fsiz - pos, 1, fil);
@@ -983,7 +983,7 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipos, dpoint3d* istr, dpoin
 	return (1);
 }
 
-static void dorthorotate(double ox, double oy, double oz, dpoint3d* istr, dpoint3d* ihei, dpoint3d* ifor)
+static void dorthorotate(double ox, double oy, double oz, point3d* istr, point3d* ihei, point3d* ifor)
 {
 	double f, t, dx, dy, dz, rr[9];
 
@@ -1118,7 +1118,7 @@ void uninitapp()
 
 void doframe()
 {
-	dpoint3d dp;
+	point3d dp;
 	float f, fmousx, fmousy;
 	int pitch, screen_w, screen_h;
 
@@ -1145,7 +1145,7 @@ void doframe()
 	dp.z = fmousx * .008;
 	dorthorotate(dp.x, dp.y, dp.z, &istr, &ihei, &ifor);
 
-	dpoint3d ivel = { 0, 0, 0 };
+	point3d ivel = { 0, 0, 0 };
 
 	f = dt * 60.0;
 	if (keystatus[0x1e]) {
