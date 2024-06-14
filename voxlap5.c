@@ -504,21 +504,21 @@ static void vrendz(long sx, long sy, long x_end, long iplc, long iinc)
 	}
 }
 
-static void setcamera(dpoint3d* ipo, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo,
+static void setcamera(dpoint3d* ipos, dpoint3d* istr, dpoint3d* ihei, dpoint3d* ifor,
 	float dahx, float dahy, float dahz)
 {
-	gipos.x = ipo->x;
-	gipos.y = ipo->y;
-	gipos.z = ipo->z;
-	gistr.x = ist->x;
-	gistr.y = ist->y;
-	gistr.z = ist->z;
-	gihei.x = ihe->x;
-	gihei.y = ihe->y;
-	gihei.z = ihe->z;
-	gifor.x = ifo->x;
-	gifor.y = ifo->y;
-	gifor.z = ifo->z;
+	gipos.x = ipos->x;
+	gipos.y = ipos->y;
+	gipos.z = ipos->z;
+	gistr.x = istr->x;
+	gistr.y = istr->y;
+	gistr.z = istr->z;
+	gihei.x = ihei->x;
+	gihei.y = ihei->y;
+	gihei.z = ihei->z;
+	gifor.x = ifor->x;
+	gifor.y = ifor->y;
+	gifor.z = ifor->z;
 	gihx = dahx;
 	gihy = dahy;
 	gihz = dahz;
@@ -924,7 +924,7 @@ static inline int filelength(int h)
 	return st.st_size;
 }
 
-static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo)
+static long loadvxl(const char* lodfilnam, dpoint3d* ipos, dpoint3d* istr, dpoint3d* ihei, dpoint3d* ifor)
 {
 	FILE* fil;
 	long i, fsiz;
@@ -960,10 +960,10 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3
 	if (i != VSID)
 		return (0);
 
-	fread(ipo, 24, 1, fil);
-	fread(ist, 24, 1, fil);
-	fread(ihe, 24, 1, fil);
-	fread(ifo, 24, 1, fil);
+	fread(ipos, 24, 1, fil);
+	fread(istr, 24, 1, fil);
+	fread(ihei, 24, 1, fil);
+	fread(ifor, 24, 1, fil);
 	pos += 24 * 4;
 
 	v = (char*)vbuf;
@@ -983,7 +983,7 @@ static long loadvxl(const char* lodfilnam, dpoint3d* ipo, dpoint3d* ist, dpoint3
 	return (1);
 }
 
-static void dorthorotate(double ox, double oy, double oz, dpoint3d* ist, dpoint3d* ihe, dpoint3d* ifo)
+static void dorthorotate(double ox, double oy, double oz, dpoint3d* istr, dpoint3d* ihei, dpoint3d* ifor)
 {
 	double f, t, dx, dy, dz, rr[9];
 
@@ -1003,24 +1003,24 @@ static void dorthorotate(double ox, double oy, double oz, dpoint3d* ist, dpoint3
 	rr[4] = ox * oy;
 	rr[8] = oz * oy;
 	rr[5] = dy;
-	ox = ist->x;
-	oy = ihe->x;
-	oz = ifo->x;
-	ist->x = ox * rr[0] + oy * rr[3] + oz * rr[6];
-	ihe->x = ox * rr[1] + oy * rr[4] + oz * rr[7];
-	ifo->x = ox * rr[2] + oy * rr[5] + oz * rr[8];
-	ox = ist->y;
-	oy = ihe->y;
-	oz = ifo->y;
-	ist->y = ox * rr[0] + oy * rr[3] + oz * rr[6];
-	ihe->y = ox * rr[1] + oy * rr[4] + oz * rr[7];
-	ifo->y = ox * rr[2] + oy * rr[5] + oz * rr[8];
-	ox = ist->z;
-	oy = ihe->z;
-	oz = ifo->z;
-	ist->z = ox * rr[0] + oy * rr[3] + oz * rr[6];
-	ihe->z = ox * rr[1] + oy * rr[4] + oz * rr[7];
-	ifo->z = ox * rr[2] + oy * rr[5] + oz * rr[8];
+	ox = istr->x;
+	oy = ihei->x;
+	oz = ifor->x;
+	istr->x = ox * rr[0] + oy * rr[3] + oz * rr[6];
+	ihei->x = ox * rr[1] + oy * rr[4] + oz * rr[7];
+	ifor->x = ox * rr[2] + oy * rr[5] + oz * rr[8];
+	ox = istr->y;
+	oy = ihei->y;
+	oz = ifor->y;
+	istr->y = ox * rr[0] + oy * rr[3] + oz * rr[6];
+	ihei->y = ox * rr[1] + oy * rr[4] + oz * rr[7];
+	ifor->y = ox * rr[2] + oy * rr[5] + oz * rr[8];
+	ox = istr->z;
+	oy = ihei->z;
+	oz = ifor->z;
+	istr->z = ox * rr[0] + oy * rr[3] + oz * rr[6];
+	ihei->z = ox * rr[1] + oy * rr[4] + oz * rr[7];
+	ifor->z = ox * rr[2] + oy * rr[5] + oz * rr[8];
 }
 
 //----------------------------------------------------------------------------
