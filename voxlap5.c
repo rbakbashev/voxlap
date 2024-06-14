@@ -73,7 +73,7 @@ static cftype cf[256];
 static uint32_t* pixels;
 
 static lpoint3d iposl;
-static float gihx, gihy, gihz, gposxfrac[2], gposyfrac[2], grd;
+static float halfxres, halfyres, halfzres, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char* gstartv;
 
@@ -505,13 +505,13 @@ static void vrendz(long sx, long sy, long x_end, long iplc, long iinc)
 static void setcamera(point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor,
 	float dahx, float dahy, float dahz)
 {
-	gihx = dahx;
-	gihy = dahy;
-	gihz = dahz;
+	halfxres = dahx;
+	halfyres = dahy;
+	halfzres = dahz;
 
-	gcorn[0].x = -gihx * istr->x - gihy * ihei->x + gihz * ifor->x;
-	gcorn[0].y = -gihx * istr->y - gihy * ihei->y + gihz * ifor->y;
-	gcorn[0].z = -gihx * istr->z - gihy * ihei->z + gihz * ifor->z;
+	gcorn[0].x = -halfxres * istr->x - halfyres * ihei->x + halfzres * ifor->x;
+	gcorn[0].y = -halfxres * istr->y - halfyres * ihei->y + halfzres * ifor->y;
+	gcorn[0].z = -halfxres * istr->z - halfyres * ihei->z + halfzres * ifor->z;
 	gcorn[1].x =  xres * istr->x + gcorn[0].x;
 	gcorn[1].y =  xres * istr->y + gcorn[0].y;
 	gcorn[1].z =  xres * istr->z + gcorn[0].z;
@@ -805,10 +805,10 @@ static void opticast()
 	if (ifor.z == 0)
 		f = 32000;
 	else
-		f = gihz / ifor.z;
+		f = halfzres / ifor.z;
 	f = min(max(f, -32000), 32000);
-	cx = istr.z * f + gihx;
-	cy = ihei.z * f + gihy;
+	cx = istr.z * f + halfxres;
+	cy = ihei.z * f + halfyres;
 
 	wx0 = (float)(-(anginc));
 	wx1 = (float)(xres - 1 + (anginc));
@@ -885,7 +885,7 @@ static void opticast()
 	y0 -= .01;
 	y3 += .01;
 
-	f = (float)PREC / gihz;
+	f = (float)PREC / halfzres;
 	optistrx = istr.x * f;
 	optiheix = ihei.x * f;
 	optiaddx = gcorn[0].x * f;
