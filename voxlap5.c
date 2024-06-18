@@ -163,6 +163,86 @@ static inline long signbiti(float f)
 	return (l >> 31);
 }
 
+static int drawfwall(char *v, cftype *c, long ogx)
+{
+	long col;
+
+	if (v[1] != c->z1) {
+		if (v[1] > c->z1)
+			c->z1 = v[1];
+		else {
+			do {
+				c->z1--;
+				col = *(long*)&v[(c->z1 - v[1]) * 4 + 4];
+				while (dmulrethigh(gylookup[c->z1], c->cx1, c->cy1, ogx) < 0) {
+					c->i1->col = col;
+					c->i1--;
+					if (c->i0 > c->i1)
+						return 1;
+					c->cx1 -= gi0;
+					c->cy1 -= gi1;
+				}
+			} while (v[1] != c->z1);
+		}
+	}
+
+	return 0;
+}
+
+static int drawcwall(char *v, cftype *c, long ogx)
+{
+	long col;
+
+	if (v[3] != c->z0) {
+		if (v[3] < c->z0)
+			c->z0 = v[3];
+		else {
+			do {
+				c->z0++;
+				col = *(long*)&v[(c->z0 - v[3]) * 4 - 4];
+				while (dmulrethigh(gylookup[c->z0], c->cx0, c->cy0, ogx) >= 0) {
+					c->i0->col = col;
+					c->i0++;
+					if (c->i0 > c->i1)
+						return 1;
+					c->cx0 += gi0;
+					c->cy0 += gi1;
+				}
+			} while (v[3] != c->z0);
+		}
+	}
+
+	return 0;
+}
+
+static int drawceil(char *v, cftype *c, long gx)
+{
+	while (dmulrethigh(gylookup[c->z0], c->cx0, c->cy0, gx) >= 0) {
+		c->i0->col = (*(long*)&v[-4]);
+		c->i0++;
+		if (c->i0 > c->i1)
+			return 1;
+		c->cx0 += gi0;
+		c->cy0 += gi1;
+	}
+
+	return 0;
+}
+
+static int drawflor(char *v, cftype *c, long gx)
+{
+	while (dmulrethigh(gylookup[c->z1], c->cx1, c->cy1, gx) < 0) {
+		c->i1->col = *(long*)&v[4];
+		c->i1--;
+		if (c->i0 > c->i1)
+			return 1;
+		c->cx1 -= gi0;
+		c->cy1 -= gi1;
+	}
+
+	return 0;
+}
+
 static void gline(long leng, float x0, float y0, float x1, float y1)
 {
 	int64_t q;
@@ -258,76 +338,31 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	j = (((unsigned long)(gpz[1] - gpz[0])) >> 31);
 	gx = gpz[j];
 	ixy = gpixy;
+
 	if (v == (char*)*(long*)gpixy)
 		goto drawflor;
 	goto drawceil;
 
 	while (1) {
-
-drawfwall:;
-		if (v[1] != c->z1) {
-			if (v[1] > c->z1)
-				c->z1 = v[1];
-			else {
-				do {
-					c->z1--;
-					col = *(long*)&v[(c->z1 - v[1]) * 4 + 4];
-					while (dmulrethigh(gylookup[c->z1], c->cx1, c->cy1, ogx) < 0) {
-						c->i1->col = col;
-						c->i1--;
-						if (c->i0 > c->i1)
-							goto deletez;
-						c->cx1 -= gi0;
-						c->cy1 -= gi1;
-					}
-				} while (v[1] != c->z1);
-			}
-		}
+drawfwall:
+		if (drawfwall(v, c, ogx))
+			goto deletez;
 
 		if (v == (char*)*(long*)ixy)
 			goto drawflor;
 
-		// drawcwall:;
-		if (v[3] != c->z0) {
-			if (v[3] < c->z0)
-				c->z0 = v[3];
-			else {
-				do {
-					c->z0++;
-					col = *(long*)&v[(c->z0 - v[3]) * 4 - 4];
-					while (dmulrethigh(gylookup[c->z0], c->cx0, c->cy0, ogx) >= 0) {
-						c->i0->col = col;
-						c->i0++;
-						if (c->i0 > c->i1)
-							goto deletez;
-						c->cx0 += gi0;
-						c->cy0 += gi1;
-					}
-				} while (v[3] != c->z0);
-			}
-		}
+		if (drawcwall(v, c, ogx))
+			goto deletez;
 
-drawceil:;
-		while (dmulrethigh(gylookup[c->z0], c->cx0, c->cy0, gx) >= 0) {
-			c->i0->col = (*(long*)&v[-4]);
-			c->i0++;
-			if (c->i0 > c->i1)
-				goto deletez;
-			c->cx0 += gi0;
-			c->cy0 += gi1;
-		}
+drawceil:
+		if (drawceil(v, c, gx))
+			goto deletez;
 
-drawflor:;
-		while (dmulrethigh(gylookup[c->z1], c->cx1, c->cy1, gx) < 0) {
-			c->i1->col = *(long*)&v[4];
-			c->i1--;
-			if (c->i0 > c->i1)
-				goto deletez;
-			c->cx1 -= gi0;
-			c->cy1 -= gi1;
-		}
+drawflor:
+		if (drawflor(v, c, gx))
+			goto deletez;
 
-afterdelete:;
+afterdelete:
 		c--;
 		if (c < &cf[128]) {
 			ixy += gixy[j];
@@ -341,6 +376,7 @@ afterdelete:;
 			v = (char*)*(long*)ixy;
 			c = ce;
 		}
+
 		// Find highest intersecting voxbuf slab
 		while (1) {
 			if (!v[0])
@@ -384,7 +420,7 @@ afterdelete:;
 		}
 	return;
 
-deletez:;
+deletez:
 	ce--;
 	if (ce < &cf[128])
 		return;
