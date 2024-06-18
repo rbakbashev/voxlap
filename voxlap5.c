@@ -47,11 +47,11 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 // Opticast variables:
 static long anginc, maxscandist;
 
-static char* sptr[(VSID * VSID * 4) / 3];
-static long* vbuf = 0;
+static uint8_t* slabptr[(VSID * VSID * 4) / 3];
+static long* voxbuf;
 
 //                     +--------+--------+--------+--------+
-//        vbuf format: |   0:   |   1:   |   2:   |   3:   |
+//      voxbuf format: |   0:   |   1:   |   2:   |   3:   |
 //+--------------------+--------+--------+--------+--------+
 //|      First header: | nextptr|   z1   |   z1c  |  dummy |
 //|           Color 1: |    b   |    g   |    r   | intens |
@@ -341,7 +341,7 @@ afterdelete:;
 			v = (char*)*(long*)ixy;
 			c = ce;
 		}
-		// Find highest intersecting vbuf slab
+		// Find highest intersecting voxbuf slab
 		while (1) {
 			if (!v[0])
 				goto drawfwall;
@@ -767,10 +767,12 @@ static void opticast()
 
 	gixyi[0] = (VSID << 2);
 	gixyi[1] = -gixyi[0];
+
 	iposl.x = (long)ipos.x;
 	iposl.y = (long)ipos.y;
 	iposl.z = (long)ipos.z;
-	gpixy = (long)&sptr[iposl.y * VSID + iposl.x];
+
+	gpixy = (long)&slabptr[iposl.y * VSID + iposl.x];
 	ftol(ipos.z * PREC - .5f, &gposz);
 	gposxfrac[1] = ipos.x - (float)iposl.x;
 	gposxfrac[0] = 1 - gposxfrac[1];
@@ -906,14 +908,12 @@ static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d
 {
 	FILE* fil;
 	long i, fsiz;
-	char* v;
+	uint8_t* vbyte;
 	double posd[3], strd[3], heid[3], ford[3];
 
-	if (!vbuf) {
-		vbuf = (long*)malloc((VOXSIZ >> 2) << 2);
-		if (!vbuf)
-			evilquit("vbuf malloc failed");
-	}
+	voxbuf = malloc(VOXSIZ);
+	if (!voxbuf)
+		evilquit("voxbuf malloc failed");
 
 	fil = fopen(lodfilnam, "rb");
 	if (!fil) {
@@ -958,19 +958,24 @@ static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d
 	ifor->y = ford[1];
 	ifor->z = ford[2];
 
-	v = (char*)vbuf;
-	fread(v, fsiz - pos, 1, fil);
-
-	for (i = 0; i < VSID * VSID; i++) {
-		sptr[i] = v;
-		while (v[0])
-			v += (long)v[0] << 2;
-		v += ((long)v[2] - (long)v[1] + 2) << 2;
-	}
+	vbyte = (uint8_t*)voxbuf;
+	fread(vbyte, fsiz - pos, 1, fil);
 
 	fclose(fil);
 
-	memset(&sptr[VSID * VSID], 0, sizeof(sptr) - VSID * VSID * 4);
+	for (i = 0; i < VSID * VSID; i++) {
+		slabptr[i] = vbyte;
+
+		while (vbyte[0] != 0) // nextptr
+			vbyte += (long)vbyte[0] << 2;
+
+		long z_bot_floor_col_list = (long)vbyte[2] + 1;
+		long z_top_floor_col_list = (long)vbyte[1]; // floor
+
+		vbyte += (z_bot_floor_col_list - z_top_floor_col_list + 1) << 2;
+	}
+
+	memset(&slabptr[VSID * VSID], 0, sizeof(slabptr) - VSID * VSID * 4);
 
 	return (1);
 }
@@ -1087,20 +1092,9 @@ long initapp(long argc, char** argv)
 
 void uninitapp()
 {
-	if (vbuf) {
-		free(vbuf);
-		vbuf = 0;
-	}
-
-	if (zbuffermem) {
-		free(zbuffermem);
-		zbuffermem = 0;
-	}
-	if (radarmem) {
-		free(radarmem);
-		radarmem = 0;
-		radar = 0;
-	}
+	free(voxbuf);
+	free(zbuffermem);
+	free(radarmem);
 }
 
 void doframe()
