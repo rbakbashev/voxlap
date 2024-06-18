@@ -74,7 +74,7 @@ static uint32_t* pixels;
 
 static lpoint3d iposl;
 static float halfxres, halfyres, halfzres, gposxfrac[2], gposyfrac[2], grd;
-static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
+static long gposz, gstartz0, gstartz1, gixyi[2];
 static char* gstartv;
 
 // Norm flash variables
@@ -221,7 +221,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	c->i1 = &gscanptr[leng];
 	c->z0 = gstartz0;
 	c->z1 = gstartz1;
-	if (giforzsgn < 0) {
+	if (ifor.z < 0) {
 		ftol((vd1 - vd0) * CMPPREC / leng, &gi0);
 		ftol(vd0 * CMPPREC, &c->cx0);
 		ftol((vz1 - vz0) * CMPPREC / leng, &gi1);
@@ -536,7 +536,7 @@ static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16,
 		gscanptr = (castdat*)radar;
 		for (i = 0, f = x0 + ff * .5f; i < j; f += ff, i++) {
 			vline(cx, cy, f, wy0, &p0, &p1);
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				angstart[i] = gscanptr + p0;
 			else
 				angstart[i] = gscanptr - p1;
@@ -560,11 +560,11 @@ static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16,
 			for (; sy >= 0; sy--)
 				if (isshldiv16safe(kmul, (sy << 16) - cy16))
 					break; // Anti-crash hack
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				i = -sy;
 			else
 				i = sy;
-			for (; sy >= 0; sy--, i -= giforzsgn) {
+			for (; sy >= 0; sy--, i -= (ifor.z < 0 ? -1 : 1)) {
 				ui = shldiv16(kmul, (sy << 16) - cy16);
 				u = mulshr16((p0 << 16) - cx16, ui) + kadd;
 				while ((p0 > 0) && (u >= ui)) {
@@ -596,7 +596,7 @@ static void castx1(float y1, float y2, float gx, float cx, float cy, float cx16,
 		gscanptr = (castdat*)radar;
 		for (i = 0, f = y1 + ff * .5f; i < j; f += ff, i++) {
 			hline(cx, cy, wx1, f, &p0, &p1);
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				angstart[i] = gscanptr - p0;
 			else
 				angstart[i] = gscanptr + p1;
@@ -635,7 +635,7 @@ static void castx1(float y1, float y2, float gx, float cx, float cy, float cx16,
 					lastx[p1++] = sx;
 				}
 			}
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				for (long sy = p0; sy < p1; sy++)
 					vrendz(lastx[sy], sy, xres, lastx[sy], 1);
 			else
@@ -658,7 +658,7 @@ static void casty2(float x2, float x3, float gy, float cx, float cy, float cx16,
 		gscanptr = (castdat*)radar;
 		for (i = 0, f = x3 + ff * .5f; i < j; f += ff, i++) {
 			vline(cx, cy, f, wy1, &p0, &p1);
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				angstart[i] = gscanptr - p0;
 			else
 				angstart[i] = gscanptr + p1;
@@ -682,11 +682,11 @@ static void casty2(float x2, float x3, float gy, float cx, float cy, float cx16,
 			for (; sy < yres; sy++)
 				if (isshldiv16safe(kmul, (sy << 16) - cy16))
 					break; // Anti-crash hack
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				i = sy;
 			else
 				i = -sy;
-			for (; sy < yres; sy++, i -= giforzsgn) {
+			for (; sy < yres; sy++, i -= (ifor.z < 0 ? -1 : 1)) {
 				ui = shldiv16(kmul, (sy << 16) - cy16);
 				u = mulshr16((p0 << 16) - cx16, ui) + kadd;
 				while ((p0 > 0) && (u >= ui)) {
@@ -718,7 +718,7 @@ static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16,
 		gscanptr = (castdat*)radar;
 		for (i = 0, f = y0 + ff * .5f; i < j; f += ff, i++) {
 			hline(cx, cy, wx0, f, &p0, &p1);
-			if (giforzsgn < 0)
+			if (ifor.z < 0)
 				angstart[i] = gscanptr + p0;
 			else
 				angstart[i] = gscanptr - p1;
@@ -758,7 +758,7 @@ static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16,
 				}
 			}
 			for (long sy = p0; sy < p1; sy++)
-				vrendz(0, sy, lastx[sy] + 1, 0, giforzsgn);
+				vrendz(0, sy, lastx[sy] + 1, 0, (ifor.z < 0 ? -1 : 1));
 		}
 	}
 }
@@ -767,11 +767,6 @@ static void opticast()
 {
 	float f, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
 	long i, cx16, cy16;
-
-	if (ifor.z < 0)
-		giforzsgn = -1;
-	else
-		giforzsgn = 1; // giforzsgn = (ifor.z < 0);
 
 	gixyi[0] = (VSID << 2);
 	gixyi[1] = -gixyi[0];
