@@ -243,6 +243,52 @@ static int drawflor(char *v, cftype *c, long gx)
 	return 0;
 }
 
+static int find_highest_intersecting_slab(char **v, cftype *c, long ogx)
+{
+	while (1) {
+		if (!(*v)[0])
+			return 1;
+		if (dmulrethigh(gylookup[(*v)[2] + 1], c->cx0, c->cy0, ogx) >= 0)
+			break;
+		*v += (*v)[0] * 4;
+	}
+
+	return 0;
+}
+
+static int split_cf(char *v, cftype **c, long ogx, cftype **ce)
+{
+	long col, gy, dax, day;
+
+	// If next slab ALSO intersects, split cf!
+	gy = gylookup[v[v[0] * 4 + 3]];
+	if (dmulrethigh(gy, (*c)->cx1, (*c)->cy1, ogx) < 0) {
+		col = (long)(*c)->i1;
+		dax = (*c)->cx1;
+		day = (*c)->cy1;
+		while (dmulrethigh(gylookup[v[2] + 1], dax, day, ogx) < 0) {
+			col -= sizeof(castdat);
+			dax -= gi0;
+			day -= gi1;
+		}
+		(*ce)++;
+		if ((*ce) >= &cf[192])
+			return 1; // Give it max=64 entries like ASM
+		for (cftype *c2 = (*ce); c2 > (*c); c2--)
+			c2[0] = c2[-1];
+		(*c)[1].i1 = (castdat*)col;
+		(*c)->i0 = ((castdat*)col) + 1;
+		(*c)[1].cx1 = dax;
+		(*c)->cx0 = dax + gi0;
+		(*c)[1].cy1 = day;
+		(*c)->cy0 = day + gi1;
+		(*c)[1].z1 = (*c)->z0 = v[v[0] * 4 + 3];
+		(*c)++;
+	}
+
+	return 0;
+}
+
 static void gline(long leng, float x0, float y0, float x1, float y1)
 {
 	int64_t q;
@@ -250,8 +296,8 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	long j;
 	cftype* c;
 
-	long gx, ogx = 0, gy, ixy, col, dax, day;
-	cftype *c2, *ce;
+	long gx, ogx = 0, ixy;
+	cftype *ce;
 	char* v;
 
 	vd0 = x0 * istr.x + y0 * ihei.x + gcorn[0].x;
@@ -377,39 +423,11 @@ afterdelete:
 			c = ce;
 		}
 
-		// Find highest intersecting voxbuf slab
-		while (1) {
-			if (!v[0])
-				goto drawfwall;
-			if (dmulrethigh(gylookup[v[2] + 1], c->cx0, c->cy0, ogx) >= 0)
-				break;
-			v += v[0] * 4;
-		}
-		// If next slab ALSO intersects, split cf!
-		gy = gylookup[v[v[0] * 4 + 3]];
-		if (dmulrethigh(gy, c->cx1, c->cy1, ogx) < 0) {
-			col = (long)c->i1;
-			dax = c->cx1;
-			day = c->cy1;
-			while (dmulrethigh(gylookup[v[2] + 1], dax, day, ogx) < 0) {
-				col -= sizeof(castdat);
-				dax -= gi0;
-				day -= gi1;
-			}
-			ce++;
-			if (ce >= &cf[192])
-				return; // Give it max=64 entries like ASM
-			for (c2 = ce; c2 > c; c2--)
-				c2[0] = c2[-1];
-			c[1].i1 = (castdat*)col;
-			c->i0 = ((castdat*)col) + 1;
-			c[1].cx1 = dax;
-			c->cx0 = dax + gi0;
-			c[1].cy1 = day;
-			c->cy0 = day + gi1;
-			c[1].z1 = c->z0 = v[v[0] * 4 + 3];
-			c++;
-		}
+		if (find_highest_intersecting_slab(&v, c, ogx))
+			goto drawfwall;
+
+		if (split_cf(v, &c, ogx, &ce))
+			return;
 	}
 	//------------------------------------------------------------------------
 
@@ -424,7 +442,7 @@ deletez:
 	ce--;
 	if (ce < &cf[128])
 		return;
-	for (c2 = c; c2 <= ce; c2++)
+	for (cftype *c2 = c; c2 <= ce; c2++)
 		c2[0] = c2[1];
 	goto afterdelete;
 }
