@@ -77,9 +77,6 @@ static float halfxres, halfyres, halfzres, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, gstartz0, gstartz1, gixyi[2];
 static char* gstartv;
 
-// Norm flash variables
-static long p2c[32], p2m[32]; // bbuf: 2.0K
-
 // Opticast global variables:
 // radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
 // radar: 400x300 requires  751836*2 bytes (area * 6.27*2)
@@ -1075,11 +1072,6 @@ long initapp(long argc, char** argv)
 	if (!(radarmem = malloc(radarmemsz)))
 		return (-1);
 	radar = (long*)((((long)radarmem) + 7) & ~7);
-
-	for (long z = 0; z < 32; z++) {
-		p2c[z] = (1 << z);
-		p2m[z] = p2c[z] - 1;
-	}
 
 	anginc = 1; // Higher=faster (1:full,2:half)
 	maxscandist = 256; // must be <= 2047
