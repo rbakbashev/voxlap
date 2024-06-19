@@ -243,6 +243,25 @@ static int drawflor(char *v, cftype *c, long gx)
 	return 0;
 }
 
+static int afterdel(char **v, cftype **c, cftype *ce, long *ixy, long *j, long *ogx, long *gx)
+{
+	(*c)--;
+	if ((*c) < &cf[128]) {
+		*ixy += gixy[(*j)];
+		gpz[(*j)] += gdz[(*j)];
+		*j = (((unsigned long)(gpz[1] - gpz[0])) >> 31);
+		*ogx = *gx;
+		*gx = gpz[(*j)];
+
+		if (*gx > gxmax)
+			return 1;
+		*v = (char*)*(long*)*ixy;
+		(*c) = ce;
+	}
+
+	return 0;
+}
+
 static int find_highest_intersecting_slab(char **v, cftype *c, long ogx)
 {
 	while (1) {
@@ -285,6 +304,26 @@ static int split_cf(char *v, cftype **c, long ogx, cftype **ce)
 		(*c)[1].z1 = (*c)->z0 = v[v[0] * 4 + 3];
 		(*c)++;
 	}
+
+	return 0;
+}
+
+static void clearcol(cftype *ce)
+{
+	for (cftype *c = ce; c >= &cf[128]; c--)
+		while (c->i0 <= c->i1) {
+			c->i0->col = 0;
+			c->i0++;
+		}
+}
+
+static int deletez(cftype **ce, cftype *c)
+{
+	(*ce)--;
+	if ((*ce) < &cf[128])
+		return 1;
+	for (cftype *c2 = c; c2 <= (*ce); c2++)
+		c2[0] = c2[1];
 
 	return 0;
 }
@@ -409,19 +448,8 @@ drawflor:
 			goto deletez;
 
 afterdelete:
-		c--;
-		if (c < &cf[128]) {
-			ixy += gixy[j];
-			gpz[j] += gdz[j];
-			j = (((unsigned long)(gpz[1] - gpz[0])) >> 31);
-			ogx = gx;
-			gx = gpz[j];
-
-			if (gx > gxmax)
-				break;
-			v = (char*)*(long*)ixy;
-			c = ce;
-		}
+		if (afterdel(&v, &c, ce, &ixy, &j, &ogx, &gx))
+			break;
 
 		if (find_highest_intersecting_slab(&v, c, ogx))
 			goto drawfwall;
@@ -429,21 +457,13 @@ afterdelete:
 		if (split_cf(v, &c, ogx, &ce))
 			return;
 	}
-	//------------------------------------------------------------------------
 
-	for (c = ce; c >= &cf[128]; c--)
-		while (c->i0 <= c->i1) {
-			c->i0->col = 0;
-			c->i0++;
-		}
+	clearcol(ce);
 	return;
 
 deletez:
-	ce--;
-	if (ce < &cf[128])
+	if (deletez(&ce, c))
 		return;
-	for (cftype *c2 = c; c2 <= ce; c2++)
-		c2[0] = c2[1];
 	goto afterdelete;
 }
 
