@@ -429,7 +429,6 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	goto drawceil;
 
 	while (1) {
-drawfwall:
 		if (drawfwall(v, c, ogx))
 			goto deletez;
 
@@ -452,7 +451,7 @@ afterdelete:
 			break;
 
 		if (find_highest_intersecting_slab(&v, c, ogx))
-			goto drawfwall;
+			continue;
 
 		if (split_cf(v, &c, ogx, &ce))
 			return;
