@@ -429,24 +429,37 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	goto drawceil;
 
 	while (1) {
-		if (drawfwall(v, c, ogx))
-			goto deletez;
+		do {
+			if (drawfwall(v, c, ogx)) {
+				if (deletez(&ce, c))
+					return;
+				break;
+			}
 
-		if (v == (char*)*(long*)ixy)
-			goto drawflor;
+			if (v == (char*)*(long*)ixy)
+				goto drawflor;
 
-		if (drawcwall(v, c, ogx))
-			goto deletez;
+			if (drawcwall(v, c, ogx)) {
+				if (deletez(&ce, c))
+					return;
+				break;
+			}
 
 drawceil:
-		if (drawceil(v, c, gx))
-			goto deletez;
+			if (drawceil(v, c, gx)) {
+				if (deletez(&ce, c))
+					return;
+				break;
+			}
 
 drawflor:
-		if (drawflor(v, c, gx))
-			goto deletez;
+			if (drawflor(v, c, gx)) {
+				if (deletez(&ce, c))
+					return;
+				break;
+			}
+		} while (0);
 
-afterdelete:
 		if (afterdel(&v, &c, ce, &ixy, &j, &ogx, &gx))
 			break;
 
@@ -459,11 +472,6 @@ afterdelete:
 
 	clearcol(ce);
 	return;
-
-deletez:
-	if (deletez(&ce, c))
-		return;
-	goto afterdelete;
 }
 
 static void hline(float x0, float y0, float x1, float y1, long* ix0, long* ix1)
