@@ -424,41 +424,55 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	gx = gpz[j];
 	ixy = gpixy;
 
+	// 0: none, 1: floor, 2: ceil
+	int drawmode = 0;
+
 	if (v == (char*)*(long*)gpixy)
-		goto drawflor;
-	goto drawceil;
+		drawmode = 1;
+	else
+		drawmode = 2;
 
 	while (1) {
 		do {
-			if (drawfwall(v, c, ogx)) {
-				if (deletez(&ce, c))
-					return;
-				break;
+			if (drawmode == 0) {
+				if (drawfwall(v, c, ogx)) {
+					if (deletez(&ce, c))
+						return;
+					break;
+				}
+
+				if (v == (char*)*(long*)ixy)
+					drawmode = 1;
 			}
 
-			if (v == (char*)*(long*)ixy)
-				goto drawflor;
+			if (drawmode == 0) {
+				if (drawcwall(v, c, ogx)) {
+					if (deletez(&ce, c))
+						return;
+					break;
+				}
 
-			if (drawcwall(v, c, ogx)) {
-				if (deletez(&ce, c))
-					return;
-				break;
+				drawmode = 2;
 			}
 
-drawceil:
-			if (drawceil(v, c, gx)) {
-				if (deletez(&ce, c))
-					return;
-				break;
+			if (drawmode == 2) {
+				if (drawceil(v, c, gx)) {
+					if (deletez(&ce, c))
+						return;
+					break;
+				}
+				drawmode = 1;
 			}
 
-drawflor:
-			if (drawflor(v, c, gx)) {
-				if (deletez(&ce, c))
-					return;
-				break;
-			}
+			if (drawmode == 1)
+				if (drawflor(v, c, gx)) {
+					if (deletez(&ce, c))
+						return;
+					break;
+				}
 		} while (0);
+
+		drawmode = 0;
 
 		if (afterdel(&v, &c, ce, &ixy, &j, &ogx, &gx))
 			break;
