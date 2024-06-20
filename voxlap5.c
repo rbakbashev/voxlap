@@ -74,7 +74,7 @@ static uint32_t* pixels;
 
 static lpoint3d iposl;
 static float halfxres, halfyres, halfzres, gposxfrac[2], gposyfrac[2], grd;
-static long gposz, gstartz0, gstartz1, gixyi[2];
+static long gposz, gstartz0, gstartz1;
 static char* gstartv;
 
 // Opticast global variables:
@@ -360,7 +360,8 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	ftol(fabs(f2) * PREC, &gdz[1]);
 
 	gixy[0] = (signbiti(vx1) << 3) + 4; //=sgn(vx1)*4
-	gixy[1] = gixyi[signbit(vy1)]; //=sgn(vy1)*4*VSID
+	gixy[1] = vy1 < 0 ? -(VSID << 2) : VSID << 2; //=sgn(vy1)*4*VSID
+
 	if (gdz[0] <= 0) {
 		ftol(gposxfrac[signbit(vx1)] * fabs(f1) * PREC, &gpz[0]);
 		if (gpz[0] <= 0)
@@ -859,9 +860,6 @@ static void opticast()
 {
 	float f, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
 	long i, cx16, cy16;
-
-	gixyi[0] = (VSID << 2);
-	gixyi[1] = -gixyi[0];
 
 	iposl.x = (long)ipos.x;
 	iposl.y = (long)ipos.y;
