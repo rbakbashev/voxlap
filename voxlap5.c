@@ -23,7 +23,6 @@
 #define MAXZDIM 256 // Maximum .VXL dimensions in z direction (height)
 
 #define PREC (256 * 4096)
-#define CMPPREC (256 * 4096)
 
 #define VOXSIZ VSID * VSID * 128
 
@@ -74,7 +73,7 @@ static uint32_t* pixels;
 
 static lpoint3d iposl;
 static float halfxres, halfyres, halfzres, grd;
-static long gposz, gstartz0, gstartz1;
+static long gstartz0, gstartz1;
 static char* gstartv;
 
 // Opticast global variables:
@@ -90,7 +89,6 @@ static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
-static long gylookup[512 + 36]; // 256+4+128+4+64+4+...
 static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
 static long gmaxscandist;
 
@@ -174,7 +172,7 @@ static int drawfwall(char *v, cftype *c, long ogx)
 			do {
 				c->z1--;
 				col = *(long*)&v[(c->z1 - v[1]) * 4 + 4];
-				while (dmulrethigh(gylookup[c->z1], c->cx1, c->cy1, ogx) < 0) {
+				while (dmulrethigh(c->z1 * PREC - (long)(ipos.z * PREC), c->cx1, c->cy1, ogx) < 0) {
 					c->i1->col = col;
 					c->i1--;
 					if (c->i0 > c->i1)
@@ -200,7 +198,7 @@ static int drawcwall(char *v, cftype *c, long ogx)
 			do {
 				c->z0++;
 				col = *(long*)&v[(c->z0 - v[3]) * 4 - 4];
-				while (dmulrethigh(gylookup[c->z0], c->cx0, c->cy0, ogx) >= 0) {
+				while (dmulrethigh(c->z0 * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0) {
 					c->i0->col = col;
 					c->i0++;
 					if (c->i0 > c->i1)
@@ -217,7 +215,7 @@ static int drawcwall(char *v, cftype *c, long ogx)
 
 static int drawceil(char *v, cftype *c, long gx)
 {
-	while (dmulrethigh(gylookup[c->z0], c->cx0, c->cy0, gx) >= 0) {
+	while (dmulrethigh(c->z0 * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, gx) >= 0) {
 		c->i0->col = (*(long*)&v[-4]);
 		c->i0++;
 		if (c->i0 > c->i1)
@@ -231,7 +229,7 @@ static int drawceil(char *v, cftype *c, long gx)
 
 static int drawflor(char *v, cftype *c, long gx)
 {
-	while (dmulrethigh(gylookup[c->z1], c->cx1, c->cy1, gx) < 0) {
+	while (dmulrethigh(c->z1 * PREC - (long)(ipos.z * PREC), c->cx1, c->cy1, gx) < 0) {
 		c->i1->col = *(long*)&v[4];
 		c->i1--;
 		if (c->i0 > c->i1)
@@ -267,7 +265,7 @@ static int find_highest_intersecting_slab(char **v, cftype *c, long ogx)
 	while (1) {
 		if (!(*v)[0])
 			return 1;
-		if (dmulrethigh(gylookup[(*v)[2] + 1], c->cx0, c->cy0, ogx) >= 0)
+		if (dmulrethigh(((*v)[2] + 1) * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0)
 			break;
 		*v += (*v)[0] * 4;
 	}
@@ -280,12 +278,12 @@ static int split_cf(char *v, cftype **c, long ogx, cftype **ce)
 	long col, gy, dax, day;
 
 	// If next slab ALSO intersects, split cf!
-	gy = gylookup[v[v[0] * 4 + 3]];
+	gy = (v[v[0] * 4 + 3]) * PREC - (long)(ipos.z * PREC);
 	if (dmulrethigh(gy, (*c)->cx1, (*c)->cy1, ogx) < 0) {
 		col = (long)(*c)->i1;
 		dax = (*c)->cx1;
 		day = (*c)->cy1;
-		while (dmulrethigh(gylookup[v[2] + 1], dax, day, ogx) < 0) {
+		while (dmulrethigh((v[2] + 1) * PREC - (long)(ipos.z * PREC), dax, day, ogx) < 0) {
 			col -= sizeof(castdat);
 			dax -= gi0;
 			day -= gi1;
@@ -389,15 +387,15 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	c->z0 = gstartz0;
 	c->z1 = gstartz1;
 	if (ifor.z < 0) {
-		ftol((vd1 - vd0) * CMPPREC / leng, &gi0);
-		ftol(vd0 * CMPPREC, &c->cx0);
-		ftol((vz1 - vz0) * CMPPREC / leng, &gi1);
-		ftol(vz0 * CMPPREC, &c->cy0);
+		ftol((vd1 - vd0) * PREC / leng, &gi0);
+		ftol(vd0 * PREC, &c->cx0);
+		ftol((vz1 - vz0) * PREC / leng, &gi1);
+		ftol(vz0 * PREC, &c->cy0);
 	} else {
-		ftol((vd0 - vd1) * CMPPREC / leng, &gi0);
-		ftol(vd1 * CMPPREC, &c->cx0);
-		ftol((vz0 - vz1) * CMPPREC / leng, &gi1);
-		ftol(vz1 * CMPPREC, &c->cy0);
+		ftol((vd0 - vd1) * PREC / leng, &gi0);
+		ftol(vd1 * PREC, &c->cx0);
+		ftol((vz0 - vz1) * PREC / leng, &gi1);
+		ftol(vz1 * PREC, &c->cy0);
 	}
 	c->cx1 = leng * gi0 + c->cx0;
 	c->cy1 = leng * gi1 + c->cy0;
@@ -863,16 +861,14 @@ static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16,
 static void opticast()
 {
 	float f, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
-	long i, cx16, cy16;
+	long cx16, cy16;
 
 	iposl.x = (long)ipos.x;
 	iposl.y = (long)ipos.y;
 	iposl.z = (long)ipos.z;
 
 	gpixy = (long)&slabptr[iposl.y * VSID + iposl.x];
-	ftol(ipos.z * PREC - .5f, &gposz);
-	for (i = 0; i < 256 + 4; i++)
-		gylookup[i] = (i * PREC - gposz);
+
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
 
 	gstartv = (char*)*(long*)gpixy;
