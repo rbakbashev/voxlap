@@ -73,7 +73,7 @@ static cftype cf[256];
 static uint32_t* pixels;
 
 static lpoint3d iposl;
-static float halfxres, halfyres, halfzres, gposxfrac[2], gposyfrac[2], grd;
+static float halfxres, halfyres, halfzres, grd;
 static long gposz, gstartz0, gstartz1;
 static char* gstartv;
 
@@ -362,22 +362,26 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	gixy[0] = (signbiti(vx1) << 3) + 4; //=sgn(vx1)*4
 	gixy[1] = vy1 < 0 ? -(VSID << 2) : VSID << 2; //=sgn(vy1)*4*VSID
 
+	float posxfrac = vx1 < 0 ? (ipos.x - (float)iposl.x) : 1 - (ipos.x - (float)iposl.x);
+	float posyfrac = vy1 < 0 ? (ipos.y - (float)iposl.y) : 1 - (ipos.y - (float)iposl.y);
+
 	if (gdz[0] <= 0) {
-		ftol(gposxfrac[signbit(vx1)] * fabs(f1) * PREC, &gpz[0]);
+		ftol(posxfrac * fabs(f1) * PREC, &gpz[0]);
 		if (gpz[0] <= 0)
 			gpz[0] = 0x7fffffff;
 		gdz[0] = 0x7fffffff - gpz[0];
 	} // Hack for divide overflow
 	else
-		ftol(gposxfrac[signbit(vx1)] * (float)gdz[0], &gpz[0]);
+		ftol(posxfrac * (float)gdz[0], &gpz[0]);
+
 	if (gdz[1] <= 0) {
-		ftol(gposyfrac[signbit(vy1)] * fabs(f2) * PREC, &gpz[1]);
+		ftol(posyfrac * fabs(f2) * PREC, &gpz[1]);
 		if (gpz[1] <= 0)
 			gpz[1] = 0x7fffffff;
 		gdz[1] = 0x7fffffff - gpz[1];
 	} // Hack for divide overflow
 	else
-		ftol(gposyfrac[signbit(vy1)] * (float)gdz[1], &gpz[1]);
+		ftol(posyfrac * (float)gdz[1], &gpz[1]);
 
 	c = &cf[128];
 	c->i0 = gscanptr;
@@ -867,10 +871,6 @@ static void opticast()
 
 	gpixy = (long)&slabptr[iposl.y * VSID + iposl.x];
 	ftol(ipos.z * PREC - .5f, &gposz);
-	gposxfrac[1] = ipos.x - (float)iposl.x;
-	gposxfrac[0] = 1 - gposxfrac[1];
-	gposyfrac[1] = ipos.y - (float)iposl.y;
-	gposyfrac[0] = 1 - gposyfrac[1];
 	for (i = 0; i < 256 + 4; i++)
 		gylookup[i] = (i * PREC - gposz);
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
