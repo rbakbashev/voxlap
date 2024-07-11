@@ -89,7 +89,8 @@ static long iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static long lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
-static long gpz[2], gdz[2], gxmax, gixy[2], gpixy;
+static long gpz[2], gdz[2], gxmax, gixy[2];
+static uintptr_t gpixy;
 static long gmaxscandist;
 
 static long gi0;
@@ -241,7 +242,7 @@ static int drawflor(char *v, cftype *c, long gx)
 	return 0;
 }
 
-static int afterdel(char **v, cftype **c, cftype *ce, long *ixy, long *j, long *ogx, long *gx)
+static int afterdel(char **v, cftype **c, cftype *ce, uintptr_t *ixy, long *j, long *ogx, long *gx)
 {
 	(*c)--;
 	if ((*c) < &cf[128]) {
@@ -253,7 +254,7 @@ static int afterdel(char **v, cftype **c, cftype *ce, long *ixy, long *j, long *
 
 		if (*gx > gxmax)
 			return 1;
-		*v = (char*)*(long*)*ixy;
+		*v = (char*)*(uintptr_t*)*ixy;
 		(*c) = ce;
 	}
 
@@ -275,16 +276,17 @@ static int find_highest_intersecting_slab(char **v, cftype *c, long ogx)
 
 static int split_cf(char *v, cftype **c, long ogx, cftype **ce)
 {
-	long col, gy, dax, day;
+	castdat *col;
+	long gy, dax, day;
 
 	// If next slab ALSO intersects, split cf!
 	gy = (v[v[0] * 4 + 3]) * PREC - (long)(ipos.z * PREC);
 	if (dmulrethigh(gy, (*c)->cx1, (*c)->cy1, ogx) < 0) {
-		col = (long)(*c)->i1;
+		col = (*c)->i1;
 		dax = (*c)->cx1;
 		day = (*c)->cy1;
 		while (dmulrethigh((v[2] + 1) * PREC - (long)(ipos.z * PREC), dax, day, ogx) < 0) {
-			col -= sizeof(castdat);
+			col -= 1;
 			dax -= gi0;
 			day -= gi1;
 		}
@@ -293,8 +295,8 @@ static int split_cf(char *v, cftype **c, long ogx, cftype **ce)
 			return 1; // Give it max=64 entries like ASM
 		for (cftype *c2 = (*ce); c2 > (*c); c2--)
 			c2[0] = c2[-1];
-		(*c)[1].i1 = (castdat*)col;
-		(*c)->i0 = ((castdat*)col) + 1;
+		(*c)[1].i1 = col;
+		(*c)->i0 = col + 1;
 		(*c)[1].cx1 = dax;
 		(*c)->cx0 = dax + gi0;
 		(*c)[1].cy1 = day;
@@ -333,7 +335,8 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	long j;
 	cftype* c;
 
-	long gx, ogx = 0, ixy;
+	long gx, ogx = 0;
+	uintptr_t ixy;
 	cftype *ce;
 	char* v;
 
@@ -430,7 +433,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	// 0: none, 1: floor, 2: ceil
 	int drawmode = 0;
 
-	if (v == (char*)*(long*)gpixy)
+	if (v == (char*)*(uintptr_t*)gpixy)
 		drawmode = 1;
 	else
 		drawmode = 2;
@@ -444,7 +447,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 					break;
 				}
 
-				if (v == (char*)*(long*)ixy)
+				if (v == (char*)*(uintptr_t*)ixy)
 					drawmode = 1;
 			}
 
@@ -867,11 +870,11 @@ static void opticast()
 	iposl.y = (long)ipos.y;
 	iposl.z = (long)ipos.z;
 
-	gpixy = (long)&slabptr[iposl.y * VSID + iposl.x];
+	gpixy = (uintptr_t)&slabptr[iposl.y * VSID + iposl.x];
 
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
 
-	gstartv = (char*)*(long*)gpixy;
+	gstartv = (char*)*(uintptr_t*)gpixy;
 	if (iposl.z >= gstartv[1]) {
 		do {
 			if (!gstartv[0])
@@ -1052,6 +1055,8 @@ static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d
 
 	fclose(fil);
 
+	memset(slabptr, 0, sizeof(slabptr));
+
 	for (i = 0; i < VSID * VSID; i++) {
 		slabptr[i] = vbyte;
 
@@ -1063,8 +1068,6 @@ static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d
 
 		vbyte += (z_bot_floor_col_list - z_top_floor_col_list + 1) << 2;
 	}
-
-	memset(&slabptr[VSID * VSID], 0, sizeof(slabptr) - VSID * VSID * 4);
 
 	return (1);
 }
@@ -1165,7 +1168,7 @@ long initapp(long argc, char** argv)
 		);
 	if (!(radarmem = malloc(radarmemsz)))
 		return (-1);
-	radar = (long*)((((long)radarmem) + 7) & ~7);
+	radar = (long*)((((uintptr_t)radarmem) + 7) & ~7);
 
 	anginc = 1; // Higher=faster (1:full,2:half)
 	maxscandist = 256; // must be <= 2047
