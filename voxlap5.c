@@ -28,11 +28,11 @@
 
 #define SCPITCH 256
 
-typedef struct { long x, y, z; } lpoint3d;
+typedef struct { int32_t x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 
 typedef struct { uint32_t col; float dist; } castdat;
-typedef struct { castdat *i0, *i1; long z0, z1, cx0, cy0, cx1, cy1; } cftype;
+typedef struct { castdat *i0, *i1; int32_t z0, z1, cx0, cy0, cx1, cy1; } cftype;
 
 // Player position variables:
 static point3d ipos, istr, ihei, ifor;
@@ -44,10 +44,10 @@ static float dt = 1.f;
 static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 
 // Opticast variables:
-static long anginc, maxscandist;
+static int32_t anginc, maxscandist;
 
 static uint8_t* slabptr[(VSID * VSID * 4) / 3];
-static long* voxbuf;
+static int32_t* voxbuf;
 
 //                     +--------+--------+--------+--------+
 //      voxbuf format: |   0:   |   1:   |   2:   |   3:   |
@@ -73,28 +73,28 @@ static uint32_t* pixels;
 
 static lpoint3d iposl;
 static float halfxres, halfyres, halfzres, grd;
-static long gstartz0, gstartz1;
+static int32_t gstartz0, gstartz1;
 static uint8_t* gstartv;
 
 // Opticast global variables:
 // radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
 // radar: 400x300 requires  751836*2 bytes (area * 6.27*2)
 // radar: 640x480 requires 1917568*2 bytes (area * 6.24*2)
-static long *radar = 0, *radarmem = 0;
+static int32_t *radar = 0, *radarmem = 0;
 static float* zbuffermem;
 static size_t zbuffersiz;
 static castdat *angstart[MAXXDIM * 4], *gscanptr;
 static float wx0, wy0, wx1, wy1;
-static long iwx0, iwy0, iwx1, iwy1;
+static int32_t iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
-static long lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
+static int32_t lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
-static long gpz[2], gdz[2], gxmax, gixy[2];
+static int32_t gpz[2], gdz[2], gxmax, gixy[2];
 static uintptr_t gpixy;
-static long gmaxscandist;
+static int32_t gmaxscandist;
 
-static long gi0;
-static long gi1;
+static int32_t gi0;
+static int32_t gi1;
 
 static inline void dcossin(double a, double* c, double* s)
 {
@@ -102,9 +102,9 @@ static inline void dcossin(double a, double* c, double* s)
 	*s = sin(a);
 }
 
-static inline void ftol(float f, long* a)
+static inline void ftol(float f, int32_t* a)
 {
-	*a = (long)(f + 0.5f);
+	*a = (int32_t)(f + 0.5f);
 }
 
 static inline int32_t mulshr16(int32_t a, int32_t d)
@@ -117,14 +117,14 @@ static inline int64_t mul64(int32_t a, int32_t d)
 	return (int64_t)a * (int64_t)d;
 }
 
-static inline long shldiv16(long a, long b)
+static inline int32_t shldiv16(int32_t a, int32_t b)
 {
 	int64_t div = ((int64_t)(a >> 16) << 32) + (int64_t)(a << 16);
 
 	return div / (int64_t)b;
 }
 
-static inline long isshldiv16safe(long a, long b)
+static inline int32_t isshldiv16safe(int32_t a, int32_t b)
 {
 	if (a >= 0)
 		a = -a;
@@ -135,36 +135,36 @@ static inline long isshldiv16safe(long a, long b)
 	return (b - (a >> 14)) >> 31;
 }
 
-static inline long dmulrethigh(long b, long c, long a, long d)
+static inline int32_t dmulrethigh(int32_t b, int32_t c, int32_t a, int32_t d)
 {
 	return (uint64_t)(c * (int64_t)b - d * (int64_t)a) >> 32;
 }
 
 // if (a < 0) return(0); else if (a > b) return(b); else return(a);
-static inline long lbound0(long a, long b) // b MUST be >= 0
+static inline int32_t lbound0(int32_t a, int32_t b) // b MUST be >= 0
 {
-	if ((unsigned long)a <= b)
+	if ((uint32_t)a <= b)
 		return (a);
 	return ((~(a >> 31)) & b);
 }
 
-static inline long signbit(float f)
+static inline int32_t signbit(float f)
 {
 	uint32_t l;
 	memcpy(&l, &f, 4);
 	return (l >> 31);
 }
 
-static inline long signbiti(float f)
+static inline int32_t signbiti(float f)
 {
 	int32_t l;
 	memcpy(&l, &f, 4);
 	return (l >> 31);
 }
 
-static int drawfwall(uint8_t *v, cftype *c, long ogx)
+static int drawfwall(uint8_t *v, cftype *c, int32_t ogx)
 {
-	long col;
+	int32_t col;
 
 	if (v[1] != c->z1) {
 		if (v[1] > c->z1)
@@ -172,8 +172,8 @@ static int drawfwall(uint8_t *v, cftype *c, long ogx)
 		else {
 			do {
 				c->z1--;
-				col = *(long*)&v[(c->z1 - v[1]) * 4 + 4];
-				while (dmulrethigh(c->z1 * PREC - (long)(ipos.z * PREC), c->cx1, c->cy1, ogx) < 0) {
+				col = *(int32_t*)&v[(c->z1 - v[1]) * 4 + 4];
+				while (dmulrethigh(c->z1 * PREC - (int32_t)(ipos.z * PREC), c->cx1, c->cy1, ogx) < 0) {
 					c->i1->col = col;
 					c->i1--;
 					if (c->i0 > c->i1)
@@ -188,9 +188,9 @@ static int drawfwall(uint8_t *v, cftype *c, long ogx)
 	return 0;
 }
 
-static int drawcwall(uint8_t *v, cftype *c, long ogx)
+static int drawcwall(uint8_t *v, cftype *c, int32_t ogx)
 {
-	long col;
+	int32_t col;
 
 	if (v[3] != c->z0) {
 		if (v[3] < c->z0)
@@ -198,8 +198,8 @@ static int drawcwall(uint8_t *v, cftype *c, long ogx)
 		else {
 			do {
 				c->z0++;
-				col = *(long*)&v[(c->z0 - v[3]) * 4 - 4];
-				while (dmulrethigh(c->z0 * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0) {
+				col = *(int32_t*)&v[(c->z0 - v[3]) * 4 - 4];
+				while (dmulrethigh(c->z0 * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0) {
 					c->i0->col = col;
 					c->i0++;
 					if (c->i0 > c->i1)
@@ -214,10 +214,10 @@ static int drawcwall(uint8_t *v, cftype *c, long ogx)
 	return 0;
 }
 
-static int drawceil(uint8_t *v, cftype *c, long gx)
+static int drawceil(uint8_t *v, cftype *c, int32_t gx)
 {
-	while (dmulrethigh(c->z0 * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, gx) >= 0) {
-		c->i0->col = (*(long*)&v[-4]);
+	while (dmulrethigh(c->z0 * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, gx) >= 0) {
+		c->i0->col = (*(int32_t*)&v[-4]);
 		c->i0++;
 		if (c->i0 > c->i1)
 			return 1;
@@ -228,10 +228,10 @@ static int drawceil(uint8_t *v, cftype *c, long gx)
 	return 0;
 }
 
-static int drawflor(uint8_t *v, cftype *c, long gx)
+static int drawflor(uint8_t *v, cftype *c, int32_t gx)
 {
-	while (dmulrethigh(c->z1 * PREC - (long)(ipos.z * PREC), c->cx1, c->cy1, gx) < 0) {
-		c->i1->col = *(long*)&v[4];
+	while (dmulrethigh(c->z1 * PREC - (int32_t)(ipos.z * PREC), c->cx1, c->cy1, gx) < 0) {
+		c->i1->col = *(int32_t*)&v[4];
 		c->i1--;
 		if (c->i0 > c->i1)
 			return 1;
@@ -242,13 +242,13 @@ static int drawflor(uint8_t *v, cftype *c, long gx)
 	return 0;
 }
 
-static int afterdel(uint8_t **v, cftype **c, cftype *ce, uintptr_t *ixy, long *j, long *ogx, long *gx)
+static int afterdel(uint8_t **v, cftype **c, cftype *ce, uintptr_t *ixy, int32_t *j, int32_t *ogx, int32_t *gx)
 {
 	(*c)--;
 	if ((*c) < &cf[128]) {
 		*ixy += gixy[(*j)];
 		gpz[(*j)] += gdz[(*j)];
-		*j = (((unsigned long)(gpz[1] - gpz[0])) >> 31);
+		*j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
 		*ogx = *gx;
 		*gx = gpz[(*j)];
 
@@ -261,12 +261,12 @@ static int afterdel(uint8_t **v, cftype **c, cftype *ce, uintptr_t *ixy, long *j
 	return 0;
 }
 
-static int find_highest_intersecting_slab(uint8_t **v, cftype *c, long ogx)
+static int find_highest_intersecting_slab(uint8_t **v, cftype *c, int32_t ogx)
 {
 	while (1) {
 		if (!(*v)[0])
 			return 1;
-		if (dmulrethigh(((*v)[2] + 1) * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0)
+		if (dmulrethigh(((*v)[2] + 1) * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0)
 			break;
 		*v += (*v)[0] * 4;
 	}
@@ -274,18 +274,18 @@ static int find_highest_intersecting_slab(uint8_t **v, cftype *c, long ogx)
 	return 0;
 }
 
-static int split_cf(uint8_t *v, cftype **c, long ogx, cftype **ce)
+static int split_cf(uint8_t *v, cftype **c, int32_t ogx, cftype **ce)
 {
 	castdat *col;
-	long gy, dax, day;
+	int32_t gy, dax, day;
 
 	// If next slab ALSO intersects, split cf!
-	gy = (v[v[0] * 4 + 3]) * PREC - (long)(ipos.z * PREC);
+	gy = (v[v[0] * 4 + 3]) * PREC - (int32_t)(ipos.z * PREC);
 	if (dmulrethigh(gy, (*c)->cx1, (*c)->cy1, ogx) < 0) {
 		col = (*c)->i1;
 		dax = (*c)->cx1;
 		day = (*c)->cy1;
-		while (dmulrethigh((v[2] + 1) * PREC - (long)(ipos.z * PREC), dax, day, ogx) < 0) {
+		while (dmulrethigh((v[2] + 1) * PREC - (int32_t)(ipos.z * PREC), dax, day, ogx) < 0) {
 			col -= 1;
 			dax -= gi0;
 			day -= gi1;
@@ -328,14 +328,14 @@ static int deletez(cftype **ce, cftype *c)
 	return 0;
 }
 
-static void gline(long leng, float x0, float y0, float x1, float y1)
+static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 {
 	int64_t q;
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
-	long j;
+	int32_t j;
 	cftype* c;
 
-	long gx, ogx = 0;
+	int32_t gx, ogx = 0;
 	uintptr_t ixy;
 	cftype *ce;
 	uint8_t* v;
@@ -413,7 +413,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	q = mul64(gdz[0], j);
 	q += (uint64_t)gpz[0];
 	if (q < (uint64_t)gxmax)
-		gxmax = (long)q;
+		gxmax = (int32_t)q;
 	if (gixy[1] < 0)
 		j = iposl.y;
 	else
@@ -421,12 +421,12 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	q = mul64(gdz[1], j);
 	q += (uint64_t)gpz[1];
 	if (q < (uint64_t)gxmax)
-		gxmax = (long)q;
+		gxmax = (int32_t)q;
 
 	//------------------------------------------------------------------------
 	ce = c;
 	v = gstartv;
-	j = (((unsigned long)(gpz[1] - gpz[0])) >> 31);
+	j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
 	gx = gpz[j];
 	ixy = gpixy;
 
@@ -494,7 +494,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	return;
 }
 
-static void hline(float x0, float y0, float x1, float y1, long* ix0, long* ix1)
+static void hline(float x0, float y0, float x1, float y1, int32_t* ix0, int32_t* ix1)
 {
 	float dyx;
 
@@ -528,7 +528,7 @@ static void hline(float x0, float y0, float x1, float y1, long* ix0, long* ix1)
 		);
 }
 
-static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
+static void vline(float x0, float y0, float x1, float y1, int32_t* iy0, int32_t* iy1)
 {
 	float dxy;
 
@@ -562,7 +562,7 @@ static void vline(float x0, float y0, float x1, float y1, long* iy0, long* iy1)
 		);
 }
 
-static void hrendz(long sx, long sy, long x_end, long plc, long incr, long j)
+static void hrendz(int32_t sx, int32_t sy, int32_t x_end, int32_t plc, int32_t incr, int32_t j)
 {
 	float* zb    = zbuffermem + sy * xres + sx;
 	uint32_t* p0 = pixels + sy * xres + sx;
@@ -580,7 +580,7 @@ static void hrendz(long sx, long sy, long x_end, long plc, long incr, long j)
 	} while (p0 != p1);
 }
 
-static void vrendz(long sx, long sy, long x_end, long iplc, long iinc)
+static void vrendz(int32_t sx, int32_t sy, int32_t x_end, int32_t iplc, int32_t iinc)
 {
 	float* zb    = zbuffermem + sy * xres + sx;
 	uint32_t* p0 = pixels + sy * xres + sx;
@@ -623,7 +623,7 @@ static void setcamera(point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor
 
 static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16, float cy16)
 {
-	long j, i, p0, p1, kadd, sy, kmul, ui, u, u1;
+	int32_t j, i, p0, p1, kadd, sy, kmul, ui, u, u1;
 	float ff, f;
 
 	ftol((x1 - x0) / anginc, &j);
@@ -683,7 +683,7 @@ static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16,
 
 static void castx1(float y1, float y2, float gx, float cx, float cy, float cx16, float cy16)
 {
-	long j, i, p0, p1, kadd, sx, kmul, ui, u;
+	int32_t j, i, p0, p1, kadd, sx, kmul, ui, u;
 	float ff, f;
 
 	ftol((y2 - y1) / anginc, &j);
@@ -734,10 +734,10 @@ static void castx1(float y1, float y2, float gx, float cx, float cy, float cx16,
 				}
 			}
 			if (ifor.z < 0)
-				for (long sy = p0; sy < p1; sy++)
+				for (int32_t sy = p0; sy < p1; sy++)
 					vrendz(lastx[sy], sy, xres, lastx[sy], 1);
 			else
-				for (long sy = p0; sy < p1; sy++)
+				for (int32_t sy = p0; sy < p1; sy++)
 					vrendz(lastx[sy], sy, xres, -lastx[sy], -1);
 		}
 	}
@@ -745,7 +745,7 @@ static void castx1(float y1, float y2, float gx, float cx, float cy, float cx16,
 
 static void casty2(float x2, float x3, float gy, float cx, float cy, float cx16, float cy16)
 {
-	long j, i, p0, p1, kadd, sy, kmul, ui, u, u1;
+	int32_t j, i, p0, p1, kadd, sy, kmul, ui, u, u1;
 	float ff, f;
 
 	ftol((x2 - x3) / anginc, &j);
@@ -805,7 +805,7 @@ static void casty2(float x2, float x3, float gy, float cx, float cy, float cx16,
 
 static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16, float cy16)
 {
-	long j, i, p0, p1, kadd, sx, kmul, ui, u;
+	int32_t j, i, p0, p1, kadd, sx, kmul, ui, u;
 	float ff, f;
 
 	ftol((y3 - y0) / anginc, &j);
@@ -855,7 +855,7 @@ static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16,
 					lastx[p1++] = sx;
 				}
 			}
-			for (long sy = p0; sy < p1; sy++)
+			for (int32_t sy = p0; sy < p1; sy++)
 				vrendz(0, sy, lastx[sy] + 1, 0, (ifor.z < 0 ? -1 : 1));
 		}
 	}
@@ -864,11 +864,11 @@ static void castx2(float y0, float y3, float fx, float cx, float cy, float cx16,
 static void opticast()
 {
 	float f, cx, cy, fx, fy, gx, gy, x0, y0, x1, y1, x2, y2, x3, y3;
-	long cx16, cy16;
+	int32_t cx16, cy16;
 
-	iposl.x = (long)ipos.x;
-	iposl.y = (long)ipos.y;
-	iposl.z = (long)ipos.z;
+	iposl.x = (int32_t)ipos.x;
+	iposl.y = (int32_t)ipos.y;
+	iposl.z = (int32_t)ipos.z;
 
 	gpixy = (uintptr_t)&slabptr[iposl.y * VSID + iposl.x];
 
@@ -996,10 +996,10 @@ static inline int filelength(int h)
 	return st.st_size;
 }
 
-static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor)
+static int32_t loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor)
 {
 	FILE* fil;
-	long i, fsiz;
+	int32_t i, fsiz;
 	uint8_t* vbyte;
 	double posd[3], strd[3], heid[3], ford[3];
 
@@ -1061,10 +1061,10 @@ static long loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, point3d
 		slabptr[i] = vbyte;
 
 		while (vbyte[0] != 0) // nextptr
-			vbyte += (long)vbyte[0] << 2;
+			vbyte += (int32_t)vbyte[0] << 2;
 
-		long z_bot_floor_col_list = (long)vbyte[2] + 1;
-		long z_top_floor_col_list = (long)vbyte[1]; // floor
+		int32_t z_bot_floor_col_list = (int32_t)vbyte[2] + 1;
+		int32_t z_top_floor_col_list = (int32_t)vbyte[1]; // floor
 
 		vbyte += (z_bot_floor_col_list - z_top_floor_col_list + 1) << 2;
 	}
@@ -1140,7 +1140,7 @@ static void voxsetframebuffer(uint32_t* _pixels, int pitch, int x, int y)
 	}
 }
 
-static long initmap()
+static int initmap()
 {
 	const char* vxlnam = "vxl/untitled.vxl";
 
@@ -1149,7 +1149,7 @@ static long initmap()
 		return -1;
 	}
 
-	maxscandist = (long)(VSID * 1.42);
+	maxscandist = (int32_t)(VSID * 1.42);
 
 	return 0;
 }
@@ -1168,7 +1168,7 @@ long initapp(long argc, char** argv)
 		);
 	if (!(radarmem = malloc(radarmemsz)))
 		return (-1);
-	radar = (long*)((((uintptr_t)radarmem) + 7) & ~7);
+	radar = (int32_t*)((((uintptr_t)radarmem) + 7) & ~7);
 
 	anginc = 1; // Higher=faster (1:full,2:half)
 	maxscandist = 256; // must be <= 2047
