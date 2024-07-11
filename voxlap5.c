@@ -74,7 +74,7 @@ static uint32_t* pixels;
 static lpoint3d iposl;
 static float halfxres, halfyres, halfzres, grd;
 static long gstartz0, gstartz1;
-static char* gstartv;
+static uint8_t* gstartv;
 
 // Opticast global variables:
 // radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
@@ -162,7 +162,7 @@ static inline long signbiti(float f)
 	return (l >> 31);
 }
 
-static int drawfwall(char *v, cftype *c, long ogx)
+static int drawfwall(uint8_t *v, cftype *c, long ogx)
 {
 	long col;
 
@@ -188,7 +188,7 @@ static int drawfwall(char *v, cftype *c, long ogx)
 	return 0;
 }
 
-static int drawcwall(char *v, cftype *c, long ogx)
+static int drawcwall(uint8_t *v, cftype *c, long ogx)
 {
 	long col;
 
@@ -214,7 +214,7 @@ static int drawcwall(char *v, cftype *c, long ogx)
 	return 0;
 }
 
-static int drawceil(char *v, cftype *c, long gx)
+static int drawceil(uint8_t *v, cftype *c, long gx)
 {
 	while (dmulrethigh(c->z0 * PREC - (long)(ipos.z * PREC), c->cx0, c->cy0, gx) >= 0) {
 		c->i0->col = (*(long*)&v[-4]);
@@ -228,7 +228,7 @@ static int drawceil(char *v, cftype *c, long gx)
 	return 0;
 }
 
-static int drawflor(char *v, cftype *c, long gx)
+static int drawflor(uint8_t *v, cftype *c, long gx)
 {
 	while (dmulrethigh(c->z1 * PREC - (long)(ipos.z * PREC), c->cx1, c->cy1, gx) < 0) {
 		c->i1->col = *(long*)&v[4];
@@ -242,7 +242,7 @@ static int drawflor(char *v, cftype *c, long gx)
 	return 0;
 }
 
-static int afterdel(char **v, cftype **c, cftype *ce, uintptr_t *ixy, long *j, long *ogx, long *gx)
+static int afterdel(uint8_t **v, cftype **c, cftype *ce, uintptr_t *ixy, long *j, long *ogx, long *gx)
 {
 	(*c)--;
 	if ((*c) < &cf[128]) {
@@ -254,14 +254,14 @@ static int afterdel(char **v, cftype **c, cftype *ce, uintptr_t *ixy, long *j, l
 
 		if (*gx > gxmax)
 			return 1;
-		*v = (char*)*(uintptr_t*)*ixy;
+		*v = (uint8_t*)*(uintptr_t*)*ixy;
 		(*c) = ce;
 	}
 
 	return 0;
 }
 
-static int find_highest_intersecting_slab(char **v, cftype *c, long ogx)
+static int find_highest_intersecting_slab(uint8_t **v, cftype *c, long ogx)
 {
 	while (1) {
 		if (!(*v)[0])
@@ -274,7 +274,7 @@ static int find_highest_intersecting_slab(char **v, cftype *c, long ogx)
 	return 0;
 }
 
-static int split_cf(char *v, cftype **c, long ogx, cftype **ce)
+static int split_cf(uint8_t *v, cftype **c, long ogx, cftype **ce)
 {
 	castdat *col;
 	long gy, dax, day;
@@ -338,7 +338,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	long gx, ogx = 0;
 	uintptr_t ixy;
 	cftype *ce;
-	char* v;
+	uint8_t* v;
 
 	vd0 = x0 * istr.x + y0 * ihei.x + gcorn[0].x;
 	vd1 = x0 * istr.y + y0 * ihei.y + gcorn[0].y;
@@ -433,7 +433,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 	// 0: none, 1: floor, 2: ceil
 	int drawmode = 0;
 
-	if (v == (char*)*(uintptr_t*)gpixy)
+	if (v == (uint8_t*)*(uintptr_t*)gpixy)
 		drawmode = 1;
 	else
 		drawmode = 2;
@@ -447,7 +447,7 @@ static void gline(long leng, float x0, float y0, float x1, float y1)
 					break;
 				}
 
-				if (v == (char*)*(uintptr_t*)ixy)
+				if (v == (uint8_t*)*(uintptr_t*)ixy)
 					drawmode = 1;
 			}
 
@@ -874,7 +874,7 @@ static void opticast()
 
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
 
-	gstartv = (char*)*(uintptr_t*)gpixy;
+	gstartv = (uint8_t*)*(uintptr_t*)gpixy;
 	if (iposl.z >= gstartv[1]) {
 		do {
 			if (!gstartv[0])
