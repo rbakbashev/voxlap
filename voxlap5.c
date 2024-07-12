@@ -150,13 +150,6 @@ static inline int32_t lbound0(int32_t a, int32_t b) // b MUST be >= 0
 	return ((~(a >> 31)) & b);
 }
 
-static inline int32_t signbit(float f)
-{
-	uint32_t l;
-	memcpy(&l, &f, 4);
-	return (l >> 31);
-}
-
 static inline int32_t signbiti(float f)
 {
 	int32_t l;

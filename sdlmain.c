@@ -185,15 +185,8 @@ void quitloop ()
 	SDL_PushEvent(&ev);
 }
 
-void setvolume (long) {}
-void playsound (const char *, long, float, void *, long) {}
-void setears3d (float, float, float, float, float, float, float, float, float) {}
-void playsoundupdate (void *, void *) {}
-void kensoundclose() {}
-
 void evilquit (const char *str) //Evil because this function makes awful assumptions!!!
 {
-	kensoundclose();
 	SDL_DestroyTexture(texture);
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(screen);
@@ -321,7 +314,6 @@ static void sdlmsgloop(void)
 				}
 				break;
 			case SDL_QUIT:
-				kensoundclose();
 				SDL_DestroyTexture(texture);
 				SDL_DestroyRenderer(renderer);
 				SDL_DestroyWindow(screen);
