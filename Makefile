@@ -1,8 +1,11 @@
+CC = gcc
+
 run: voxlap
 	./$^
 
 voxlap: voxlap5.c sdlmain.c
-	gcc $^ \
+	$(CC) \
+		$^ \
 		-o $@ \
 		-m32 \
 		-I /home/rbakbashev/build/vox/my/slab6/SDL2inst/include \
