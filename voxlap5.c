@@ -28,6 +28,8 @@
 
 #define SCPITCH 256
 
+typedef uintptr_t usize;
+
 typedef struct { int32_t x, y, z; } lpoint3d;
 typedef struct { float x, y, z; } point3d;
 
@@ -46,8 +48,8 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 // Opticast variables:
 static int32_t anginc, maxscandist;
 
+static uint8_t* voxbuf;
 static uint8_t* slabptr[(VSID * VSID * 4) / 3];
-static int32_t* voxbuf;
 
 //                     +--------+--------+--------+--------+
 //      voxbuf format: |   0:   |   1:   |   2:   |   3:   |
@@ -1000,7 +1002,7 @@ static int32_t loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, poin
 {
 	FILE* fil;
 	int32_t i, fsiz;
-	uint8_t* vbyte;
+	usize vbyte;
 	double posd[3], strd[3], heid[3], ford[3];
 
 	voxbuf = malloc(VOXSIZ);
@@ -1050,21 +1052,22 @@ static int32_t loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, poin
 	ifor->y = ford[1];
 	ifor->z = ford[2];
 
-	vbyte = (uint8_t*)voxbuf;
-	fread(vbyte, fsiz - pos, 1, fil);
+	fread(voxbuf, fsiz - pos, 1, fil);
 
 	fclose(fil);
+
+	vbyte = 0;
 
 	memset(slabptr, 0, sizeof(slabptr));
 
 	for (i = 0; i < VSID * VSID; i++) {
-		slabptr[i] = vbyte;
+		slabptr[i] = voxbuf + vbyte;
 
-		while (vbyte[0] != 0) // nextptr
-			vbyte += (int32_t)vbyte[0] << 2;
+		while (voxbuf[vbyte] != 0) // nextptr
+			vbyte += (usize)voxbuf[vbyte] << 2;
 
-		int32_t z_bot_floor_col_list = (int32_t)vbyte[2] + 1;
-		int32_t z_top_floor_col_list = (int32_t)vbyte[1]; // floor
+		usize z_bot_floor_col_list = (usize)(voxbuf[vbyte + 2]) + 1;
+		usize z_top_floor_col_list = (usize)(voxbuf[vbyte + 1]); // floor
 
 		vbyte += (z_bot_floor_col_list - z_top_floor_col_list + 1) << 2;
 	}
