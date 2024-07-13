@@ -237,25 +237,6 @@ static int drawflor(uint8_t *v, cftype *c, int32_t gx)
 	return 0;
 }
 
-static int afterdel(uint8_t **v, cftype **c, cftype *ce, uintptr_t *ixy, int32_t *j, int32_t *ogx, int32_t *gx)
-{
-	(*c)--;
-	if ((*c) < &cf[128]) {
-		*ixy += gixy[(*j)];
-		gpz[(*j)] += gdz[(*j)];
-		*j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
-		*ogx = *gx;
-		*gx = gpz[(*j)];
-
-		if (*gx > gxmax)
-			return 1;
-		*v = (uint8_t*)*(uintptr_t*)*ixy;
-		(*c) = ce;
-	}
-
-	return 0;
-}
-
 static int find_highest_intersecting_slab(uint8_t **v, cftype *c, int32_t ogx)
 {
 	while (1) {
@@ -475,8 +456,19 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 
 		drawmode = 0;
 
-		if (afterdel(&v, &c, ce, &ixy, &j, &ogx, &gx))
-			break;
+		c--;
+		if (c < &cf[128]) {
+			ixy += gixy[j];
+			gpz[j] += gdz[j];
+			j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
+			ogx = gx;
+			gx = gpz[j];
+
+			if (gx > gxmax)
+				break;
+			v = (uint8_t*)*(uintptr_t*)ixy;
+			c = ce;
+		}
 
 		if (find_highest_intersecting_slab(&v, c, ogx))
 			continue;
