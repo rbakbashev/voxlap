@@ -312,7 +312,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	cftype* c;
 
 	int32_t gx, ogx = 0;
-	uintptr_t ixy;
+	uint8_t** ixy;
 	cftype *ce;
 	uint8_t* v;
 
@@ -423,7 +423,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 					break;
 				}
 
-				if (v == *(uint8_t**)ixy)
+				if (v == *ixy)
 					drawmode = 1;
 			}
 
@@ -458,7 +458,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 
 		c--;
 		if (c < &cf[128]) {
-			ixy += gixy[j];
+			ixy += gixy[j] / 4;
 			gpz[j] += gdz[j];
 			j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
 			ogx = gx;
@@ -466,7 +466,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 
 			if (gx > gxmax)
 				break;
-			v = *(uint8_t**)ixy;
+			v = *ixy;
 			c = ce;
 		}
 
