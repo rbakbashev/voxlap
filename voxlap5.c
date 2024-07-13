@@ -92,7 +92,7 @@ static point3d gcorn[4];
 static int32_t lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
 static int32_t gpz[2], gdz[2], gxmax, gixy[2];
-static uintptr_t gpixy;
+static uint8_t** gpixy;
 static int32_t gmaxscandist;
 
 static int32_t gi0;
@@ -409,7 +409,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	// 0: none, 1: floor, 2: ceil
 	int drawmode = 0;
 
-	if (v == (uint8_t*)*(uintptr_t*)gpixy)
+	if (v == *gpixy)
 		drawmode = 1;
 	else
 		drawmode = 2;
@@ -423,7 +423,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 					break;
 				}
 
-				if (v == (uint8_t*)*(uintptr_t*)ixy)
+				if (v == *(uint8_t**)ixy)
 					drawmode = 1;
 			}
 
@@ -466,7 +466,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 
 			if (gx > gxmax)
 				break;
-			v = (uint8_t*)*(uintptr_t*)ixy;
+			v = *(uint8_t**)ixy;
 			c = ce;
 		}
 
@@ -857,11 +857,11 @@ static void opticast()
 	iposl.y = (int32_t)ipos.y;
 	iposl.z = (int32_t)ipos.z;
 
-	gpixy = (uintptr_t)&slabptr[iposl.y * VSID + iposl.x];
+	gpixy = &slabptr[iposl.y * VSID + iposl.x];
 
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
 
-	gstartv = (uint8_t*)*(uintptr_t*)gpixy;
+	gstartv = *gpixy;
 	if (iposl.z >= gstartv[1]) {
 		do {
 			if (!gstartv[0])
