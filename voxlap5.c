@@ -134,12 +134,12 @@ static inline int32_t isshldiv16safe(int32_t a, int32_t b)
 	if (b >= 0)
 		b = -b;
 
-	return (b - (a >> 14)) >> 31;
+	return (b - (a >> 14)) < 0;
 }
 
-static inline int32_t dmulrethigh(int32_t b, int32_t c, int32_t a, int32_t d)
+static inline int32_t dmulrethigh(int32_t a, int32_t b, int32_t c, int32_t d)
 {
-	return (uint64_t)(c * (int64_t)b - d * (int64_t)a) >> 32;
+	return ((int64_t)a * (int64_t)b - (int64_t)c * (int64_t)d) >> 32;
 }
 
 // if (a < 0) return(0); else if (a > b) return(b); else return(a);
@@ -483,7 +483,6 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	}
 
 	clearcol(ce);
-	return;
 }
 
 static void hline(float x0, float y0, float x1, float y1, int32_t* ix0, int32_t* ix1)
