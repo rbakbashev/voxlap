@@ -7,9 +7,7 @@ voxlap: voxlap5.c sdlmain.c
 	$(CC) \
 		$^ \
 		-o $@ \
-		-m32 \
-		-I /home/rbakbashev/build/vox/my/slab6/SDL2inst/include \
-		/home/rbakbashev/build/vox/my/slab6/SDL2inst/lib/libSDL2.a \
+		-lSDL2 \
 		-lm \
 		-g \
 		-Wall \
