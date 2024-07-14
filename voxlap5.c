@@ -552,39 +552,39 @@ static void vline(float x0, float y0, float x1, float y1, int32_t* iy0, int32_t*
 		);
 }
 
+static void drawpixel(int32_t y, int32_t x, uint32_t val)
+{
+	*(uint32_t*)(pixels + y * xres + x) = val;
+}
+
 static void hrendz(int32_t sx, int32_t sy, int32_t x_end, int32_t plc, int32_t incr, int32_t j)
 {
-	float* zb    = zbuffermem + sy * xres + sx;
-	uint32_t* p0 = pixels + sy * xres + sx;
-	uint32_t* p1 = pixels + sy * xres + x_end;
-	float dirx   = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
-	float diry   = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
+	float* zb  = zbuffermem + sy * xres + sx;
+	float dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
+	float diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
 
 	do {
-		*p0 = angstart[plc >> 16][j].col;
+		drawpixel(sy, sx, angstart[plc >> 16][j].col);
 		*zb = angstart[plc >> 16][j].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		plc += incr;
-		p0++;
-	} while (p0 != p1);
+		sx++;
+	} while (sx != x_end);
 }
 
 static void vrendz(int32_t sx, int32_t sy, int32_t x_end, int32_t iplc, int32_t iinc)
 {
-	float* zb    = zbuffermem + sy * xres + sx;
-	uint32_t* p0 = pixels + sy * xres + sx;
-	uint32_t* p1 = pixels + sy * xres + x_end;
-	float dirx   = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
-	float diry   = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
+	float* zb  = zbuffermem + sy * xres + sx;
+	float dirx = optistrx * (float)sx + optiheix * (float)sy + optiaddx;
+	float diry = optistry * (float)sx + optiheiy * (float)sy + optiaddy;
 
-	while (p0 < p1) {
-		*p0 = angstart[uurend[sx] >> 16][iplc].col;
+	while (sx < x_end) {
+		drawpixel(sy, sx, angstart[uurend[sx] >> 16][iplc].col);
 		*zb = angstart[uurend[sx] >> 16][iplc].dist / sqrt(dirx * dirx + diry * diry);
 		dirx += optistrx;
 		diry += optistry;
 		uurend[sx] += uurend[sx + MAXXDIM];
-		p0++;
 		iplc += iinc;
 		sx++;
 	}
