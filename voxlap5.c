@@ -341,8 +341,8 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	ftol(fabs(f1) * PREC, &gdz[0]);
 	ftol(fabs(f2) * PREC, &gdz[1]);
 
-	gixy[0] = (signbiti(vx1) << 3) + 4; //=sgn(vx1)*4
-	gixy[1] = vy1 < 0 ? -(VSID << 2) : VSID << 2; //=sgn(vy1)*4*VSID
+	gixy[0] = ((signbiti(vx1) << 3) + 4) / 4; //=sgn(vx1)
+	gixy[1] = vy1 < 0 ? -VSID : VSID; //=sgn(vy1)*VSID
 
 	float posxfrac = vx1 < 0 ? (ipos.x - (float)iposl.x) : 1 - (ipos.x - (float)iposl.x);
 	float posyfrac = vy1 < 0 ? (ipos.y - (float)iposl.y) : 1 - (ipos.y - (float)iposl.y);
@@ -463,7 +463,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 
 		c--;
 		if (c < &cf[128]) {
-			ixy += gixy[j] / 4;
+			ixy += gixy[j];
 			gpz[j] += gdz[j];
 			j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
 			ogx = gx;
