@@ -49,7 +49,7 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 static int32_t anginc, maxscandist;
 
 static uint8_t* voxbuf;
-static uint8_t* slabptr[(VSID * VSID * 4) / 3];
+static usize slabptr[(VSID * VSID * 4) / 3];
 
 //                     +--------+--------+--------+--------+
 //      voxbuf format: |   0:   |   1:   |   2:   |   3:   |
@@ -76,7 +76,7 @@ static uint32_t* pixels;
 static lpoint3d iposl;
 static float halfxres, halfyres, halfzres, grd;
 static int32_t gstartz0, gstartz1;
-static uint8_t* gstartv;
+static usize gstartv;
 
 // Opticast global variables:
 // radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
@@ -92,7 +92,7 @@ static point3d gcorn[4];
 static int32_t lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
 static int32_t gpz[2], gdz[2], gxmax, gixy[2];
-static uint8_t** gpixy;
+static usize* gpixy;
 static int32_t gmaxscandist;
 
 static int32_t gi0;
@@ -157,17 +157,22 @@ static inline int32_t signbiti(float f)
 	return (l >> 31);
 }
 
-static int drawfwall(uint8_t *v, cftype *c, int32_t ogx)
+static int32_t read4(usize v)
+{
+	return *(int32_t*)(voxbuf + v);
+}
+
+static int drawfwall(usize v, cftype *c, int32_t ogx)
 {
 	int32_t col;
 
-	if (v[1] != c->z1) {
-		if (v[1] > c->z1)
-			c->z1 = v[1];
+	if (voxbuf[v + 1] != c->z1) {
+		if (voxbuf[v + 1] > c->z1)
+			c->z1 = voxbuf[v + 1];
 		else {
 			do {
 				c->z1--;
-				col = *(int32_t*)&v[(c->z1 - v[1]) * 4 + 4];
+				col = read4(v + (c->z1 - voxbuf[v + 1]) * 4 + 4);
 				while (dmulrethigh(c->z1 * PREC - (int32_t)(ipos.z * PREC), c->cx1, c->cy1, ogx) < 0) {
 					c->i1->col = col;
 					c->i1--;
@@ -176,24 +181,24 @@ static int drawfwall(uint8_t *v, cftype *c, int32_t ogx)
 					c->cx1 -= gi0;
 					c->cy1 -= gi1;
 				}
-			} while (v[1] != c->z1);
+			} while (voxbuf[v + 1] != c->z1);
 		}
 	}
 
 	return 0;
 }
 
-static int drawcwall(uint8_t *v, cftype *c, int32_t ogx)
+static int drawcwall(usize v, cftype *c, int32_t ogx)
 {
 	int32_t col;
 
-	if (v[3] != c->z0) {
-		if (v[3] < c->z0)
-			c->z0 = v[3];
+	if (voxbuf[v + 3] != c->z0) {
+		if (voxbuf[v + 3] < c->z0)
+			c->z0 = voxbuf[v + 3];
 		else {
 			do {
 				c->z0++;
-				col = *(int32_t*)&v[(c->z0 - v[3]) * 4 - 4];
+				col = read4(v + (c->z0 - voxbuf[v + 3]) * 4 - 4);
 				while (dmulrethigh(c->z0 * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0) {
 					c->i0->col = col;
 					c->i0++;
@@ -202,17 +207,17 @@ static int drawcwall(uint8_t *v, cftype *c, int32_t ogx)
 					c->cx0 += gi0;
 					c->cy0 += gi1;
 				}
-			} while (v[3] != c->z0);
+			} while (voxbuf[v + 3] != c->z0);
 		}
 	}
 
 	return 0;
 }
 
-static int drawceil(uint8_t *v, cftype *c, int32_t gx)
+static int drawceil(usize v, cftype *c, int32_t gx)
 {
 	while (dmulrethigh(c->z0 * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, gx) >= 0) {
-		c->i0->col = (*(int32_t*)&v[-4]);
+		c->i0->col = read4(v - 4);
 		c->i0++;
 		if (c->i0 > c->i1)
 			return 1;
@@ -223,10 +228,10 @@ static int drawceil(uint8_t *v, cftype *c, int32_t gx)
 	return 0;
 }
 
-static int drawflor(uint8_t *v, cftype *c, int32_t gx)
+static int drawflor(usize v, cftype *c, int32_t gx)
 {
 	while (dmulrethigh(c->z1 * PREC - (int32_t)(ipos.z * PREC), c->cx1, c->cy1, gx) < 0) {
-		c->i1->col = *(int32_t*)&v[4];
+		c->i1->col = read4(v + 4);
 		c->i1--;
 		if (c->i0 > c->i1)
 			return 1;
@@ -237,31 +242,31 @@ static int drawflor(uint8_t *v, cftype *c, int32_t gx)
 	return 0;
 }
 
-static int find_highest_intersecting_slab(uint8_t **v, cftype *c, int32_t ogx)
+static int find_highest_intersecting_slab(usize *v, cftype *c, int32_t ogx)
 {
 	while (1) {
-		if (!(*v)[0])
+		if (!voxbuf[*v])
 			return 1;
-		if (dmulrethigh(((*v)[2] + 1) * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0)
+		if (dmulrethigh((voxbuf[*v + 2] + 1) * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0)
 			break;
-		*v += (*v)[0] * 4;
+		*v += voxbuf[*v] * 4;
 	}
 
 	return 0;
 }
 
-static int split_cf(uint8_t *v, cftype **c, int32_t ogx, cftype **ce)
+static int split_cf(usize v, cftype **c, int32_t ogx, cftype **ce)
 {
 	castdat *col;
 	int32_t gy, dax, day;
 
 	// If next slab ALSO intersects, split cf!
-	gy = (v[v[0] * 4 + 3]) * PREC - (int32_t)(ipos.z * PREC);
+	gy = (voxbuf[v + voxbuf[v + 0] * 4 + 3]) * PREC - (int32_t)(ipos.z * PREC);
 	if (dmulrethigh(gy, (*c)->cx1, (*c)->cy1, ogx) < 0) {
 		col = (*c)->i1;
 		dax = (*c)->cx1;
 		day = (*c)->cy1;
-		while (dmulrethigh((v[2] + 1) * PREC - (int32_t)(ipos.z * PREC), dax, day, ogx) < 0) {
+		while (dmulrethigh((voxbuf[v + 2] + 1) * PREC - (int32_t)(ipos.z * PREC), dax, day, ogx) < 0) {
 			col -= 1;
 			dax -= gi0;
 			day -= gi1;
@@ -277,7 +282,7 @@ static int split_cf(uint8_t *v, cftype **c, int32_t ogx, cftype **ce)
 		(*c)->cx0 = dax + gi0;
 		(*c)[1].cy1 = day;
 		(*c)->cy0 = day + gi1;
-		(*c)[1].z1 = (*c)->z0 = v[v[0] * 4 + 3];
+		(*c)[1].z1 = (*c)->z0 = voxbuf[v + voxbuf[v + 0] * 4 + 3];
 		(*c)++;
 	}
 
@@ -312,9 +317,9 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	cftype* c;
 
 	int32_t gx, ogx = 0;
-	uint8_t** ixy;
+	usize* ixy;
 	cftype *ce;
-	uint8_t* v;
+	usize v;
 
 	vd0 = x0 * istr.x + y0 * ihei.x + gcorn[0].x;
 	vd1 = x0 * istr.y + y0 * ihei.y + gcorn[0].y;
@@ -862,18 +867,18 @@ static void opticast()
 	gmaxscandist = min(max(maxscandist, 1), 2047) * PREC;
 
 	gstartv = *gpixy;
-	if (iposl.z >= gstartv[1]) {
+	if (iposl.z >= voxbuf[gstartv + 1]) {
 		do {
-			if (!gstartv[0])
+			if (!voxbuf[gstartv + 0])
 				return;
-			gstartv += gstartv[0] * 4;
-		} while (iposl.z >= gstartv[1]);
-		if (iposl.z < gstartv[3])
+			gstartv += voxbuf[gstartv + 0] * 4;
+		} while (iposl.z >= voxbuf[gstartv + 1]);
+		if (iposl.z < voxbuf[gstartv + 3])
 			return;
-		gstartz0 = gstartv[3];
+		gstartz0 = voxbuf[gstartv + 3];
 	} else
 		gstartz0 = 0;
-	gstartz1 = gstartv[1];
+	gstartz1 = voxbuf[gstartv + 1];
 
 	if (ifor.z == 0)
 		f = 32000;
@@ -1046,7 +1051,7 @@ static int32_t loadvxl(const char* lodfilnam, point3d* ipos, point3d* istr, poin
 	memset(slabptr, 0, sizeof(slabptr));
 
 	for (i = 0; i < VSID * VSID; i++) {
-		slabptr[i] = voxbuf + vbyte;
+		slabptr[i] = vbyte;
 
 		while (voxbuf[vbyte] != 0) // nextptr
 			vbyte += (usize)voxbuf[vbyte] << 2;
