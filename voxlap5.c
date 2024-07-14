@@ -91,7 +91,7 @@ static int32_t iwx0, iwy0, iwx1, iwy1;
 static point3d gcorn[4];
 static int32_t lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
-static int32_t gpz[2], gdz[2], gxmax, gixy[2];
+static int32_t gpz[2], gdz[2], gxmax;
 static usize* gpixy;
 static int32_t gmaxscandist;
 
@@ -150,11 +150,9 @@ static inline int32_t lbound0(int32_t a, int32_t b) // b MUST be >= 0
 	return ((~(a >> 31)) & b);
 }
 
-static inline int32_t signbiti(float f)
+static inline int32_t sgn(float val)
 {
-	int32_t l;
-	memcpy(&l, &f, 4);
-	return (l >> 31);
+	return copysignf(1.0, val);
 }
 
 static int32_t read4(usize v)
@@ -313,6 +311,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 {
 	int64_t q;
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
+	int32_t gixy[2];
 	int32_t j;
 	cftype* c;
 
@@ -341,8 +340,8 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	ftol(fabs(f1) * PREC, &gdz[0]);
 	ftol(fabs(f2) * PREC, &gdz[1]);
 
-	gixy[0] = ((signbiti(vx1) << 3) + 4) / 4; //=sgn(vx1)
-	gixy[1] = vy1 < 0 ? -VSID : VSID; //=sgn(vy1)*VSID
+	gixy[0] = sgn(vx1);
+	gixy[1] = sgn(vy1) * VSID;
 
 	float posxfrac = vx1 < 0 ? (ipos.x - (float)iposl.x) : 1 - (ipos.x - (float)iposl.x);
 	float posyfrac = vy1 < 0 ? (ipos.y - (float)iposl.y) : 1 - (ipos.y - (float)iposl.y);
