@@ -88,7 +88,7 @@ static size_t zbuffersiz;
 static castdat *angstart[MAXXDIM * 4], *gscanptr;
 static float wx0, wy0, wx1, wy1;
 static int32_t iwx0, iwy0, iwx1, iwy1;
-static point3d gcorn[4];
+static point3d gcorn;
 static int32_t lastx[max(MAXYDIM, VSID)], uurend[MAXXDIM * 2 + 8];
 
 static int32_t gpz[2], gdz[2], gxmax;
@@ -320,12 +320,12 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	cftype *ce;
 	usize v;
 
-	vd0 = x0 * istr.x + y0 * ihei.x + gcorn[0].x;
-	vd1 = x0 * istr.y + y0 * ihei.y + gcorn[0].y;
-	vz0 = x0 * istr.z + y0 * ihei.z + gcorn[0].z;
-	vx1 = x1 * istr.x + y1 * ihei.x + gcorn[0].x;
-	vy1 = x1 * istr.y + y1 * ihei.y + gcorn[0].y;
-	vz1 = x1 * istr.z + y1 * ihei.z + gcorn[0].z;
+	vd0 = x0 * istr.x + y0 * ihei.x + gcorn.x;
+	vd1 = x0 * istr.y + y0 * ihei.y + gcorn.y;
+	vz0 = x0 * istr.z + y0 * ihei.z + gcorn.z;
+	vx1 = x1 * istr.x + y1 * ihei.x + gcorn.x;
+	vy1 = x1 * istr.y + y1 * ihei.y + gcorn.y;
+	vz1 = x1 * istr.z + y1 * ihei.z + gcorn.z;
 
 	f = sqrt(vx1 * vx1 + vy1 * vy1);
 	f1 = f / vx1;
@@ -597,18 +597,9 @@ static void setcamera(point3d* ipos, point3d* istr, point3d* ihei, point3d* ifor
 	halfyres = dahy;
 	halfzres = dahz;
 
-	gcorn[0].x = -halfxres * istr->x - halfyres * ihei->x + halfzres * ifor->x;
-	gcorn[0].y = -halfxres * istr->y - halfyres * ihei->y + halfzres * ifor->y;
-	gcorn[0].z = -halfxres * istr->z - halfyres * ihei->z + halfzres * ifor->z;
-	gcorn[1].x =  xres * istr->x + gcorn[0].x;
-	gcorn[1].y =  xres * istr->y + gcorn[0].y;
-	gcorn[1].z =  xres * istr->z + gcorn[0].z;
-	gcorn[2].x =  yres * ihei->x + gcorn[1].x;
-	gcorn[2].y =  yres * ihei->y + gcorn[1].y;
-	gcorn[2].z =  yres * ihei->z + gcorn[1].z;
-	gcorn[3].x =  yres * ihei->x + gcorn[0].x;
-	gcorn[3].y =  yres * ihei->y + gcorn[0].y;
-	gcorn[3].z =  yres * ihei->z + gcorn[0].z;
+	gcorn.x = -halfxres * istr->x - halfyres * ihei->x + halfzres * ifor->x;
+	gcorn.y = -halfxres * istr->y - halfyres * ihei->y + halfzres * ifor->y;
+	gcorn.z = -halfxres * istr->z - halfyres * ihei->z + halfzres * ifor->z;
 }
 
 static void casty1(float x0, float x1, float fy, float cx, float cy, float cx16, float cy16)
@@ -964,10 +955,10 @@ static void opticast()
 	f = (float)PREC / halfzres;
 	optistrx = istr.x * f;
 	optiheix = ihei.x * f;
-	optiaddx = gcorn[0].x * f;
+	optiaddx = gcorn.x * f;
 	optistry = istr.y * f;
 	optiheiy = ihei.y * f;
-	optiaddy = gcorn[0].y * f;
+	optiaddy = gcorn.y * f;
 
 	ftol(cx * 65536, &cx16);
 	ftol(cy * 65536, &cy16);
