@@ -160,92 +160,92 @@ static int32_t read4(usize v)
 	return *(int32_t*)(voxbuf + v);
 }
 
-static int drawfwall(usize v, cftype *c, int32_t ogx)
+static int drawfwall(usize v, usize c, int32_t ogx)
 {
 	int32_t col;
 
-	if (voxbuf[v + 1] != c->z1) {
-		if (voxbuf[v + 1] > c->z1)
-			c->z1 = voxbuf[v + 1];
+	if (voxbuf[v + 1] != cf[c].z1) {
+		if (voxbuf[v + 1] > cf[c].z1)
+			cf[c].z1 = voxbuf[v + 1];
 		else {
 			do {
-				c->z1--;
-				col = read4(v + (c->z1 - voxbuf[v + 1]) * 4 + 4);
-				while (dmulrethigh(c->z1 * PREC - (int32_t)(ipos.z * PREC), c->cx1, c->cy1, ogx) < 0) {
-					c->i1->col = col;
-					c->i1--;
-					if (c->i0 > c->i1)
+				cf[c].z1--;
+				col = read4(v + (cf[c].z1 - voxbuf[v + 1]) * 4 + 4);
+				while (dmulrethigh(cf[c].z1 * PREC - (int32_t)(ipos.z * PREC), cf[c].cx1, cf[c].cy1, ogx) < 0) {
+					cf[c].i1->col = col;
+					cf[c].i1--;
+					if (cf[c].i0 > cf[c].i1)
 						return 1;
-					c->cx1 -= gi0;
-					c->cy1 -= gi1;
+					cf[c].cx1 -= gi0;
+					cf[c].cy1 -= gi1;
 				}
-			} while (voxbuf[v + 1] != c->z1);
+			} while (voxbuf[v + 1] != cf[c].z1);
 		}
 	}
 
 	return 0;
 }
 
-static int drawcwall(usize v, cftype *c, int32_t ogx)
+static int drawcwall(usize v, usize c, int32_t ogx)
 {
 	int32_t col;
 
-	if (voxbuf[v + 3] != c->z0) {
-		if (voxbuf[v + 3] < c->z0)
-			c->z0 = voxbuf[v + 3];
+	if (voxbuf[v + 3] != cf[c].z0) {
+		if (voxbuf[v + 3] < cf[c].z0)
+			cf[c].z0 = voxbuf[v + 3];
 		else {
 			do {
-				c->z0++;
-				col = read4(v + (c->z0 - voxbuf[v + 3]) * 4 - 4);
-				while (dmulrethigh(c->z0 * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0) {
-					c->i0->col = col;
-					c->i0++;
-					if (c->i0 > c->i1)
+				cf[c].z0++;
+				col = read4(v + (cf[c].z0 - voxbuf[v + 3]) * 4 - 4);
+				while (dmulrethigh(cf[c].z0 * PREC - (int32_t)(ipos.z * PREC), cf[c].cx0, cf[c].cy0, ogx) >= 0) {
+					cf[c].i0->col = col;
+					cf[c].i0++;
+					if (cf[c].i0 > cf[c].i1)
 						return 1;
-					c->cx0 += gi0;
-					c->cy0 += gi1;
+					cf[c].cx0 += gi0;
+					cf[c].cy0 += gi1;
 				}
-			} while (voxbuf[v + 3] != c->z0);
+			} while (voxbuf[v + 3] != cf[c].z0);
 		}
 	}
 
 	return 0;
 }
 
-static int drawceil(usize v, cftype *c, int32_t gx)
+static int drawceil(usize v, usize c, int32_t gx)
 {
-	while (dmulrethigh(c->z0 * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, gx) >= 0) {
-		c->i0->col = read4(v - 4);
-		c->i0++;
-		if (c->i0 > c->i1)
+	while (dmulrethigh(cf[c].z0 * PREC - (int32_t)(ipos.z * PREC), cf[c].cx0, cf[c].cy0, gx) >= 0) {
+		cf[c].i0->col = read4(v - 4);
+		cf[c].i0++;
+		if (cf[c].i0 > cf[c].i1)
 			return 1;
-		c->cx0 += gi0;
-		c->cy0 += gi1;
+		cf[c].cx0 += gi0;
+		cf[c].cy0 += gi1;
 	}
 
 	return 0;
 }
 
-static int drawflor(usize v, cftype *c, int32_t gx)
+static int drawflor(usize v, usize c, int32_t gx)
 {
-	while (dmulrethigh(c->z1 * PREC - (int32_t)(ipos.z * PREC), c->cx1, c->cy1, gx) < 0) {
-		c->i1->col = read4(v + 4);
-		c->i1--;
-		if (c->i0 > c->i1)
+	while (dmulrethigh(cf[c].z1 * PREC - (int32_t)(ipos.z * PREC), cf[c].cx1, cf[c].cy1, gx) < 0) {
+		cf[c].i1->col = read4(v + 4);
+		cf[c].i1--;
+		if (cf[c].i0 > cf[c].i1)
 			return 1;
-		c->cx1 -= gi0;
-		c->cy1 -= gi1;
+		cf[c].cx1 -= gi0;
+		cf[c].cy1 -= gi1;
 	}
 
 	return 0;
 }
 
-static int find_highest_intersecting_slab(usize *v, cftype *c, int32_t ogx)
+static int find_highest_intersecting_slab(usize *v, usize c, int32_t ogx)
 {
 	while (1) {
 		if (!voxbuf[*v])
 			return 1;
-		if (dmulrethigh((voxbuf[*v + 2] + 1) * PREC - (int32_t)(ipos.z * PREC), c->cx0, c->cy0, ogx) >= 0)
+		if (dmulrethigh((voxbuf[*v + 2] + 1) * PREC - (int32_t)(ipos.z * PREC), cf[c].cx0, cf[c].cy0, ogx) >= 0)
 			break;
 		*v += voxbuf[*v] * 4;
 	}
@@ -253,56 +253,56 @@ static int find_highest_intersecting_slab(usize *v, cftype *c, int32_t ogx)
 	return 0;
 }
 
-static int split_cf(usize v, cftype **c, int32_t ogx, cftype **ce)
+static int split_cf(usize v, usize *c, int32_t ogx, usize *ce)
 {
 	castdat *col;
 	int32_t gy, dax, day;
 
 	// If next slab ALSO intersects, split cf!
 	gy = (voxbuf[v + voxbuf[v + 0] * 4 + 3]) * PREC - (int32_t)(ipos.z * PREC);
-	if (dmulrethigh(gy, (*c)->cx1, (*c)->cy1, ogx) < 0) {
-		col = (*c)->i1;
-		dax = (*c)->cx1;
-		day = (*c)->cy1;
+	if (dmulrethigh(gy, cf[*c].cx1, cf[*c].cy1, ogx) < 0) {
+		col = cf[*c].i1;
+		dax = cf[*c].cx1;
+		day = cf[*c].cy1;
 		while (dmulrethigh((voxbuf[v + 2] + 1) * PREC - (int32_t)(ipos.z * PREC), dax, day, ogx) < 0) {
 			col -= 1;
 			dax -= gi0;
 			day -= gi1;
 		}
 		(*ce)++;
-		if ((*ce) >= &cf[192])
+		if (*ce >= 192)
 			return 1; // Give it max=64 entries like ASM
-		for (cftype *c2 = (*ce); c2 > (*c); c2--)
-			c2[0] = c2[-1];
-		(*c)[1].i1 = col;
-		(*c)->i0 = col + 1;
-		(*c)[1].cx1 = dax;
-		(*c)->cx0 = dax + gi0;
-		(*c)[1].cy1 = day;
-		(*c)->cy0 = day + gi1;
-		(*c)[1].z1 = (*c)->z0 = voxbuf[v + voxbuf[v + 0] * 4 + 3];
+		for (usize c2 = *ce; c2 > *c; c2--)
+			cf[c2 + 0] = cf[c2 - 1];
+		cf[*c + 1].i1 = col;
+		cf[*c].i0 = col + 1;
+		cf[*c + 1].cx1 = dax;
+		cf[*c].cx0 = dax + gi0;
+		cf[*c + 1].cy1 = day;
+		cf[*c].cy0 = day + gi1;
+		cf[*c + 1].z1 = cf[*c].z0 = voxbuf[v + voxbuf[v + 0] * 4 + 3];
 		(*c)++;
 	}
 
 	return 0;
 }
 
-static void clearcol(cftype *ce)
+static void clearcol(usize ce)
 {
-	for (cftype *c = ce; c >= &cf[128]; c--)
-		while (c->i0 <= c->i1) {
-			c->i0->col = 0;
-			c->i0++;
+	for (usize c = ce; c >= 128; c--)
+		while (cf[c].i0 <= cf[c].i1) {
+			cf[c].i0->col = 0;
+			cf[c].i0++;
 		}
 }
 
-static int deletez(cftype **ce, cftype *c)
+static int deletez(usize *ce, usize c)
 {
 	(*ce)--;
-	if ((*ce) < &cf[128])
+	if (*ce < 128)
 		return 1;
-	for (cftype *c2 = c; c2 <= (*ce); c2++)
-		c2[0] = c2[1];
+	for (usize c2 = c; c2 <= *ce; c2++)
+		cf[c2 + 0] = cf[c2 + 1];
 
 	return 0;
 }
@@ -313,11 +313,11 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	float f, f1, f2, vd0, vd1, vz0, vx1, vy1, vz1;
 	int32_t gixy[2];
 	int32_t j;
-	cftype* c;
+	usize c;
 
 	int32_t gx, ogx = 0;
 	usize* ixy;
-	cftype *ce;
+	usize ce;
 	usize v;
 
 	vd0 = x0 * istr.x + y0 * ihei.x + gcorn.x;
@@ -364,24 +364,24 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 	else
 		ftol(posyfrac * (float)gdz[1], &gpz[1]);
 
-	c = &cf[128];
-	c->i0 = gscanptr;
-	c->i1 = &gscanptr[leng];
-	c->z0 = gstartz0;
-	c->z1 = gstartz1;
+	c = 128;
+	cf[c].i0 = gscanptr;
+	cf[c].i1 = &gscanptr[leng];
+	cf[c].z0 = gstartz0;
+	cf[c].z1 = gstartz1;
 	if (ifor.z < 0) {
 		ftol((vd1 - vd0) * PREC / leng, &gi0);
-		ftol(vd0 * PREC, &c->cx0);
+		ftol(vd0 * PREC, &cf[c].cx0);
 		ftol((vz1 - vz0) * PREC / leng, &gi1);
-		ftol(vz0 * PREC, &c->cy0);
+		ftol(vz0 * PREC, &cf[c].cy0);
 	} else {
 		ftol((vd0 - vd1) * PREC / leng, &gi0);
-		ftol(vd1 * PREC, &c->cx0);
+		ftol(vd1 * PREC, &cf[c].cx0);
 		ftol((vz0 - vz1) * PREC / leng, &gi1);
-		ftol(vz1 * PREC, &c->cy0);
+		ftol(vz1 * PREC, &cf[c].cy0);
 	}
-	c->cx1 = leng * gi0 + c->cx0;
-	c->cy1 = leng * gi1 + c->cy0;
+	cf[c].cx1 = leng * gi0 + cf[c].cx0;
+	cf[c].cy1 = leng * gi1 + cf[c].cy0;
 
 	gxmax = gmaxscandist;
 
@@ -461,7 +461,7 @@ static void gline(int32_t leng, float x0, float y0, float x1, float y1)
 		drawmode = 0;
 
 		c--;
-		if (c < &cf[128]) {
+		if (c < 128) {
 			ixy += gixy[j];
 			gpz[j] += gdz[j];
 			j = (((uint32_t)(gpz[1] - gpz[0])) >> 31);
