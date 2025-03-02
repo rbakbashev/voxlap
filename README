@@ -1,0 +1,18 @@
+This repository contains source code of the Voxlap engine that has been ported to Windows 32-bit
+and Linux 64-bit (in the `ripntear' branch).
+
+Voxlap engine was created by Ken Silverman: http://advsys.net/ken/voxlap/voxlap05.htm
+Consult the original license and readme if you want to use it for anything!
+This project also uses SDLMAIN.ZIP by Jonathon Fowler, available from that same web page.
+
+The `master' branch of this repository contains Windows-only code ported to SDL 2. To compile it,
+you will need Visual Studio 2013 or Visual Studio 8. Or maybe others, but they weren't tested.
+  * VS2013: remove /opt:nowin98 from game.c; point makestuf.bat to C:\[..]Visual Studio 12.0 instead.
+  * VS8: may need additional downloads (service pack?) if the inline assembly doesn't compile.
+  * Others: need to have nmake, cl, ml, link in PATH, which is what scripts vcvars32.bat do.
+Unextract libraries and headers from orig/SDL2-devel-2.30.3-VC.zip to src/ and call makestuf.bat.
+
+The `ripntear' branch removes everything unrelated to rendering, removes assumptions on bitness, and
+removes dependency on Windows, and thus compiles on 64-bit Linux with `make'.
+
+The git history of the project is almost linear and should be easy to follow.
