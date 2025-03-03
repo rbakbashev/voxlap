@@ -16,3 +16,7 @@ The `ripntear' branch removes everything unrelated to rendering, removes assumpt
 removes dependency on Windows, and thus compiles on 64-bit Linux with `make'.
 
 The git history of the project is almost linear and should be easy to follow.
+
+As a word of warning, not only this code is not for us mere mortals to understand, but also
+advancements in hardware (powerful GPUs) and software (multi-draw indirect) have likely made this
+technique obsolete compared to simply rasterizing.
